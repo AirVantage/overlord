@@ -18,9 +18,27 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-func lookupIPs(autoscalingGroup string) []string {
+type Lookable interface {
+	LookupIPs() []string
+	String() string
+}
+
+type group string
+
+type tag string
+
+func (g group) String() string {
+	return string(g)
+}
+
+func (g group) LookupIPs() []string {
 	as := autoscaling.New(nil)
 	ec := ec2.New(nil)
+	autoscalingGroup := string(g)
+	envSubs := os.Getenv(string(autoscalingGroup))
+	if envSubs != "" {
+		autoscalingGroup = envSubs
+	} 
 	var output []string
 
 	params1 := &autoscaling.DescribeTagsInput{
@@ -120,6 +138,57 @@ func lookupIPs(autoscalingGroup string) []string {
 
 }
 
+func (t tag) String() string {
+	return string(t)
+}
+
+func (t tag) LookupIPs() []string {
+	ec := ec2.New(nil)
+	var output []string
+	ec2tag := string(t)
+	envSubs := os.Getenv(string(ec2tag))
+	if envSubs != "" {
+		ec2tag = envSubs
+	} 
+
+	params := &ec2.DescribeInstancesInput{
+		Filters: []*ec2.Filter{
+			{
+				Name: aws.String("tag:Name"),
+				Values: []*string{
+					aws.String(ec2tag),
+				},
+			},
+		},
+	}
+
+
+	resp, err := ec.DescribeInstances(params)
+	if err != nil {
+		if awsErr, ok := err.(awserr.Error); ok {
+			// Generic AWS error with Code, Message, and original error (if any)
+			log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+			if reqErr, ok := err.(awserr.RequestFailure); ok {
+				// A service error occurred
+				log.Println(reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
+			}
+		} else {
+			// This case should never be hit, the SDK should always return an
+			// error which satisfies the awserr.Error interface.
+			log.Println(err.Error())
+		}
+		return output
+	}
+		
+	for _, reservation := range resp.Reservations{
+		for _, instance := range reservation.Instances{
+			output = append(output, *instance.PrivateIPAddress)
+		}
+	}
+
+	return output
+}
+
 var (
 
 	resourcesDirName = "/etc/overlord/resources"
@@ -136,7 +205,8 @@ type ResourceConfig struct {
 type Resource struct {
 	Src       string
 	Dest      string
-	Groups    []string
+	Groups    []group
+	Tags      []tag
 	Uid       int
 	Gid       int
 	Mode      string
@@ -147,7 +217,7 @@ func iterate() {
 
 	// log.Println("Start iteration")
 
-	resources := make(map[string]map[*Resource]bool)
+	resources := make(map[Lookable]map[*Resource]bool)
 	state     := make(map[string]map[string]bool)
 
 	//load resources definition files
@@ -172,6 +242,11 @@ func iterate() {
 			if resources[group] == nil {resources[group]=make(map[*Resource]bool)}
 			resources[group][&rc.Resource] = true
 		}
+
+		for _, tag := range rc.Resource.Tags {
+			if resources[tag] == nil {resources[tag]=make(map[*Resource]bool)}
+			resources[tag][&rc.Resource] = true
+		}
 	}
 
 	//load state file
@@ -191,15 +266,12 @@ func iterate() {
 	newState := make(map[string]map[string]bool)
 	
 	//find group ips to update
-	for group, resourcesset := range resources {
+	for g, resourcesset := range resources {
 		
 		//substitute group name by var env if existing
-		envSubs := os.Getenv(group)
-		if envSubs != "" {
-			group = envSubs
-		} 
 
-		ips := lookupIPs(group)
+		group := g.String()
+		ips := g.LookupIPs()
 
 		newState[group] = make(map[string]bool)
 
