@@ -182,7 +182,9 @@ func (t tag) LookupIPs() []string {
 		
 	for _, reservation := range resp.Reservations{
 		for _, instance := range reservation.Instances{
-			output = append(output, *instance.PrivateIPAddress)
+			if *instance.State.Name == "running" {
+				output = append(output, *instance.PrivateIPAddress)
+			}
 		}
 	}
 
