@@ -1,7 +1,9 @@
 package main
 
 import (
+	"io"
 	"log"
+	"log/syslog"
 	"os"
 	"os/exec"
 	"sort"
@@ -393,10 +395,33 @@ func iterate() {
 }
 
 func main() {
+	var syslogCfg = os.Getenv("SYSLOG_ADDRESS")
+	if len(syslogCfg) > 0 {
+		logWriter, err := syslog.Dial("udp", syslogCfg, syslog.LOG_LOCAL0|syslog.LOG_ERR, "av-balancing")
+		if err != nil {
+			panic(err)
+		}
+		log.SetOutput(doubleWriter{logWriter, os.Stdout})
+	}
+
 	for {
 		iterate()
 		time.Sleep(time.Duration(interval) * time.Second)
 	}
+}
+
+// write to two io.Writer
+type doubleWriter struct {
+	a, b io.Writer
+}
+
+func (dw doubleWriter) Write(p []byte) (int, error) {
+	n, err := dw.a.Write(p)
+	if err != nil {
+		return n, err
+	}
+	n, err = dw.b.Write(p)
+	return n, err
 }
 
 // func main() {
