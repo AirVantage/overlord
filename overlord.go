@@ -20,7 +20,7 @@ import (
 )
 
 type Lookable interface {
-	LookupIPs() []string
+	LookupIPs() ([]string, error)
 	String() string
 }
 
@@ -32,7 +32,7 @@ func (g group) String() string {
 	return string(g)
 }
 
-func (g group) LookupIPs() []string {
+func (g group) LookupIPs() ([]string, error) {
 	as := autoscaling.New(nil)
 	ec := ec2.New(nil)
 	autoscalingGroup := string(g)
@@ -67,6 +67,7 @@ func (g group) LookupIPs() []string {
 			// error which satisfies the awserr.Error interface.
 			log.Println(err.Error())
 		}
+		return nil, err
 	}
 
 	for _, tag := range resp1.Tags {
@@ -95,7 +96,7 @@ func (g group) LookupIPs() []string {
 			log.Println(err.Error())
 		}
 
-		return output
+		return nil, err
 	}
 
 	for _, instance := range resp.AutoScalingGroups[0].Instances {
@@ -123,7 +124,7 @@ func (g group) LookupIPs() []string {
 					// error which satisfies the awserr.Error interface.
 					log.Println(err.Error())
 				}
-				continue
+				return nil, err
 			}
 
 			// Pretty-print the response data.
@@ -133,7 +134,7 @@ func (g group) LookupIPs() []string {
 
 	}
 
-	return output
+	return output, nil
 
 }
 
@@ -141,7 +142,7 @@ func (t tag) String() string {
 	return string(t)
 }
 
-func (t tag) LookupIPs() []string {
+func (t tag) LookupIPs() ([]string, error) {
 	ec := ec2.New(nil)
 	var output []string
 	ec2tag := string(t)
@@ -175,7 +176,7 @@ func (t tag) LookupIPs() []string {
 			// error which satisfies the awserr.Error interface.
 			log.Println(err.Error())
 		}
-		return output
+		return nil, err
 	}
 
 	for _, reservation := range resp.Reservations {
@@ -186,7 +187,7 @@ func (t tag) LookupIPs() []string {
 		}
 	}
 
-	return output
+	return output, nil
 }
 
 var (
@@ -283,7 +284,13 @@ func iterate() {
 		//substitute group name by var env if existing
 
 		group := g.String()
-		ips := g.LookupIPs()
+		ips, err := g.LookupIPs()
+
+		// if some AWS API calls failed during the IPs lookup, stop here and exit
+		// it will keep the dest file unmodified and won't execute the reload command.
+		if err != nil {
+			log.Fatal(err)
+		}
 
 		newState[group] = make(map[string]bool)
 
@@ -337,6 +344,7 @@ func iterate() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		// create the dest file and truncate it if it already exists
 		destFile, err := os.Create(resource.Dest)
 		defer func() { destFile.Close() }()
 		if err != nil {
