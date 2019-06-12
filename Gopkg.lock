@@ -10,7 +10,7 @@
   version = "v0.3.1"
 
 [[projects]]
-  digest = "1:9ab86d5dc64b8c71ad24bb36b8f458470e6140ed780aef0abbec2516ae468898"
+  digest = "1:3cb7aab62117c91bc811f6c9bf4fa700703f33a608474700d769e0898fcaf0e2"
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -18,22 +18,34 @@
     "aws/awsutil",
     "aws/client",
     "aws/client/metadata",
+    "aws/corehandlers",
     "aws/credentials",
+    "aws/credentials/ec2rolecreds",
+    "aws/credentials/endpointcreds",
+    "aws/credentials/processcreds",
+    "aws/credentials/stscreds",
+    "aws/csm",
+    "aws/defaults",
+    "aws/ec2metadata",
     "aws/endpoints",
     "aws/request",
+    "aws/session",
     "aws/signer/v4",
     "internal/ini",
     "internal/sdkio",
     "internal/sdkrand",
+    "internal/sdkuri",
     "internal/shareddefaults",
     "private/protocol",
     "private/protocol/ec2query",
+    "private/protocol/json/jsonutil",
     "private/protocol/query",
     "private/protocol/query/queryutil",
     "private/protocol/rest",
     "private/protocol/xml/xmlutil",
     "service/autoscaling",
     "service/ec2",
+    "service/sts",
   ]
   pruneopts = "UT"
   revision = "36f1478b1b241bd8ba1e21424b85eeb1f74f2bb4"
@@ -53,6 +65,7 @@
     "github.com/BurntSushi/toml",
     "github.com/aws/aws-sdk-go/aws",
     "github.com/aws/aws-sdk-go/aws/awserr",
+    "github.com/aws/aws-sdk-go/aws/session",
     "github.com/aws/aws-sdk-go/service/autoscaling",
     "github.com/aws/aws-sdk-go/service/ec2",
   ]

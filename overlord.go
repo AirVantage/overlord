@@ -15,6 +15,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 
@@ -35,8 +36,9 @@ func (g group) String() string {
 }
 
 func (g group) LookupIPs() ([]string, error) {
-	as := autoscaling.New(nil)
-	ec := ec2.New(nil)
+	sess := session.Must(session.NewSession())
+	as := autoscaling.New(sess)
+	ec := ec2.New(sess)
 	autoscalingGroup := string(g)
 	envSubs := os.Getenv(string(autoscalingGroup))
 	if envSubs != "" {
@@ -145,7 +147,8 @@ func (t tag) String() string {
 }
 
 func (t tag) LookupIPs() ([]string, error) {
-	ec := ec2.New(nil)
+	sess := session.Must(session.NewSession())
+	ec := ec2.New(sess)
 	var output []string
 	ec2tag := string(t)
 	envSubs := os.Getenv(string(ec2tag))
@@ -291,7 +294,7 @@ func iterate() {
 		// if some AWS API calls failed during the IPs lookup, stop here and exit
 		// it will keep the dest file unmodified and won't execute the reload command.
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("AWS API call fails: ", err)
 		}
 
 		newState[group] = make(map[string]bool)
@@ -397,7 +400,7 @@ func iterate() {
 func main() {
 	var syslogCfg = os.Getenv("SYSLOG_ADDRESS")
 	if len(syslogCfg) > 0 {
-		syslogWriter, err := syslog.Dial("udp", syslogCfg, syslog.LOG_LOCAL0|syslog.LOG_ERR, "av-balancing")
+		syslogWriter, err := syslog.Dial("udp", syslogCfg, syslog.LOG_INFO, "av-balancing")
 		if err != nil {
 			panic(err)
 		}
