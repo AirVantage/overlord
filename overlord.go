@@ -7,9 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strings"
 	"time"
 
-	// "strings"
 	"path/filepath"
 	"text/template"
 
@@ -217,6 +217,37 @@ type Resource struct {
 	ReloadCmd string `toml:"reload_cmd"`
 }
 
+// Changes keeps track of added/removed IPs for a Resource.
+// We use maps instead of slices to avoid duplicates.
+type Changes struct {
+	addedIPs   map[string]bool
+	removedIPs map[string]bool
+}
+
+// NewChanges return a pointer to an initialized Changes struct.
+func NewChanges() *Changes {
+	return &Changes{
+		addedIPs:   make(map[string]bool),
+		removedIPs: make(map[string]bool),
+	}
+}
+
+// Optimized way to get the keys of a map.
+func keys(m map[string]bool) []string {
+	result := make([]string, len(m))
+	i := 0
+	for key := range m {
+		result[i] = key
+		i++
+	}
+	return result
+}
+
+// Formats an environment variable for one or more values.
+func mkEnvVar(name string, values map[string]bool) string {
+	return name + "=" + strings.Join(keys(values), " ")
+}
+
 func iterate() {
 
 	// log.Println("Start iteration")
@@ -280,7 +311,7 @@ func iterate() {
 
 	// log.Println("Find Resources to update")
 
-	resourcesToUpdate := make(map[*Resource]bool)
+	resourcesToUpdate := make(map[*Resource]*Changes)
 	newState := make(map[string]map[string]bool)
 
 	//find group ips to update
@@ -298,13 +329,14 @@ func iterate() {
 		}
 
 		newState[group] = make(map[string]bool)
-
+		changes := NewChanges()
 		changed := false
 
 		for _, ip := range ips {
 			newState[group][ip] = true
 			if _, stateOk := state[group][ip]; !stateOk {
 				changed = true
+				changes.addedIPs[ip] = true
 				log.Println("For group", group, "new IP:", ip)
 			}
 
@@ -313,14 +345,15 @@ func iterate() {
 		for oldIp, _ := range state[group] {
 			if _, stateOk := newState[group][oldIp]; !stateOk {
 				changed = true
+				changes.removedIPs[oldIp] = true
 				log.Println("For group", group, "deprecated IP:", oldIp)
 			}
 		}
 
 		if changed {
-			for resource, v := range resourcesset {
+			for resource, _ := range resourcesset {
 				log.Println("For group", group, "update ressource:", resource)
-				resourcesToUpdate[resource] = v
+				resourcesToUpdate[resource] = changes
 			}
 		}
 
@@ -339,7 +372,7 @@ func iterate() {
 
 	// log.Println("Update resources and restart processes")
 	//generate resources
-	for resource, _ := range resourcesToUpdate {
+	for resource, changes := range resourcesToUpdate {
 
 		tmpl, err := template.ParseFiles(filepath.Join(templatesDirName, resource.Src))
 		if err != nil {
@@ -368,6 +401,9 @@ func iterate() {
 		//cmdSplit := strings.Fields(resource.ReloadCmd)
 		//cmd := exec.Command(cmdSplit[0], cmdSplit[1:]...)
 		cmd := exec.Command("bash", "-c", resource.ReloadCmd)
+		if changes != nil {
+			cmd.Env = append(os.Environ(), mkEnvVar("IP_ADDED", changes.addedIPs), mkEnvVar("IP_REMOVED", changes.removedIPs))
+		}
 		log.Println(cmd)
 		err = cmd.Start()
 		if err != nil {
