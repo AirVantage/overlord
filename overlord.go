@@ -23,7 +23,7 @@ var (
 	resourcesDirName = "/etc/overlord/resources"
 	templatesDirName = "/etc/overlord/templates"
 	stateFileName    = "/var/overlord/state.toml"
-	interval         = 30
+	interval         = flag.Duration("interval", 30*time.Second, "Interval between each lookup")
 	ipv6             = flag.Bool("ipv6", false, "Look for IPv6 addresses instead of IPv4")
 )
 
@@ -272,7 +272,7 @@ func main() {
 
 	for {
 		iterate()
-		time.Sleep(time.Duration(interval) * time.Second)
+		time.Sleep(*interval)
 	}
 }
 
