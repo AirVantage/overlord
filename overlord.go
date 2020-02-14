@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"io"
 	"log"
 	"log/syslog"
@@ -13,193 +14,17 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/autoscaling"
-	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/AirVantage/overlord/pkg/lookable"
 
 	"github.com/BurntSushi/toml"
 )
-
-type Lookable interface {
-	LookupIPs() ([]string, error)
-	String() string
-}
-
-type group string
-
-type tag string
-
-func (g group) String() string {
-	return string(g)
-}
-
-func (g group) LookupIPs() ([]string, error) {
-	sess := session.Must(session.NewSession())
-	as := autoscaling.New(sess)
-	ec := ec2.New(sess)
-	autoscalingGroup := string(g)
-	envSubs := os.Getenv(string(autoscalingGroup))
-	if envSubs != "" {
-		autoscalingGroup = envSubs
-	}
-	var output []string
-
-	params1 := &autoscaling.DescribeTagsInput{
-		Filters: []*autoscaling.Filter{
-			{ // Required
-				Name: aws.String("Value"),
-				Values: []*string{
-					aws.String(autoscalingGroup),
-				},
-			},
-		},
-	}
-	resp1, err := as.DescribeTags(params1)
-
-	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			// Generic AWS error with Code, Message, and original error (if any)
-			log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
-			if reqErr, ok := err.(awserr.RequestFailure); ok {
-				// A service error occurred
-				log.Println(reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
-			}
-		} else {
-			// This case should never be hit, the SDK should always return an
-			// error which satisfies the awserr.Error interface.
-			log.Println(err.Error())
-		}
-		return nil, err
-	}
-
-	for _, tag := range resp1.Tags {
-		autoscalingGroup = *tag.ResourceId
-	}
-
-	params := &autoscaling.DescribeAutoScalingGroupsInput{
-		AutoScalingGroupNames: []*string{
-			aws.String(autoscalingGroup), // Required
-		},
-	}
-
-	resp, err := as.DescribeAutoScalingGroups(params)
-
-	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			// Generic AWS error with Code, Message, and original error (if any)
-			log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
-			if reqErr, ok := err.(awserr.RequestFailure); ok {
-				// A service error occurred
-				log.Println(reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
-			}
-		} else {
-			// This case should never be hit, the SDK should always return an
-			// error which satisfies the awserr.Error interface.
-			log.Println(err.Error())
-		}
-
-		return nil, err
-	}
-
-	for _, instance := range resp.AutoScalingGroups[0].Instances {
-
-		if *instance.LifecycleState == "InService" {
-
-			params := &ec2.DescribeInstancesInput{
-				InstanceIds: []*string{
-					aws.String(*instance.InstanceId), // Required
-					// More values...
-				},
-			}
-
-			resp, err := ec.DescribeInstances(params)
-			if err != nil {
-				if awsErr, ok := err.(awserr.Error); ok {
-					// Generic AWS error with Code, Message, and original error (if any)
-					log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
-					if reqErr, ok := err.(awserr.RequestFailure); ok {
-						// A service error occurred
-						log.Println(reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
-					}
-				} else {
-					// This case should never be hit, the SDK should always return an
-					// error which satisfies the awserr.Error interface.
-					log.Println(err.Error())
-				}
-				return nil, err
-			}
-
-			// Pretty-print the response data.
-			output = append(output, *resp.Reservations[0].Instances[0].PrivateIpAddress)
-
-		}
-
-	}
-
-	return output, nil
-
-}
-
-func (t tag) String() string {
-	return string(t)
-}
-
-func (t tag) LookupIPs() ([]string, error) {
-	sess := session.Must(session.NewSession())
-	ec := ec2.New(sess)
-	var output []string
-	ec2tag := string(t)
-	envSubs := os.Getenv(string(ec2tag))
-	if envSubs != "" {
-		ec2tag = envSubs
-	}
-
-	params := &ec2.DescribeInstancesInput{
-		Filters: []*ec2.Filter{
-			{
-				Name: aws.String("tag:Name"),
-				Values: []*string{
-					aws.String(ec2tag),
-				},
-			},
-		},
-	}
-
-	resp, err := ec.DescribeInstances(params)
-	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			// Generic AWS error with Code, Message, and original error (if any)
-			log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
-			if reqErr, ok := err.(awserr.RequestFailure); ok {
-				// A service error occurred
-				log.Println(reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
-			}
-		} else {
-			// This case should never be hit, the SDK should always return an
-			// error which satisfies the awserr.Error interface.
-			log.Println(err.Error())
-		}
-		return nil, err
-	}
-
-	for _, reservation := range resp.Reservations {
-		for _, instance := range reservation.Instances {
-			if *instance.State.Name == "running" {
-				output = append(output, *instance.PrivateIpAddress)
-			}
-		}
-	}
-
-	return output, nil
-}
 
 var (
 	resourcesDirName = "/etc/overlord/resources"
 	templatesDirName = "/etc/overlord/templates"
 	stateFileName    = "/var/overlord/state.toml"
 	interval         = 30
+	ipv6             = flag.Bool("ipv6", false, "Look for IPv6 addresses instead of IPv4")
 )
 
 type ResourceConfig struct {
@@ -209,8 +34,9 @@ type ResourceConfig struct {
 type Resource struct {
 	Src       string
 	Dest      string
-	Groups    []group
-	Tags      []tag
+	Groups    []lookable.AutoScalingGroup
+	Tags      []lookable.Tag
+	Subnets   []lookable.Subnet
 	Uid       int
 	Gid       int
 	Mode      string
@@ -252,7 +78,7 @@ func iterate() {
 
 	// log.Println("Start iteration")
 
-	resources := make(map[Lookable]map[*Resource]bool)
+	resources := make(map[lookable.Lookable]map[*Resource]bool)
 	state := make(map[string]map[string]bool)
 
 	//load resources definition files
@@ -320,7 +146,7 @@ func iterate() {
 		//substitute group name by var env if existing
 
 		group := g.String()
-		ips, err := g.LookupIPs()
+		ips, err := g.LookupIPs(*ipv6)
 
 		// if some AWS API calls failed during the IPs lookup, stop here and exit
 		// it will keep the dest file unmodified and won't execute the reload command.
@@ -442,6 +268,7 @@ func main() {
 		}
 		log.SetOutput(io.MultiWriter(os.Stdout, syslogWriter))
 	}
+	flag.Parse()
 
 	for {
 		iterate()
