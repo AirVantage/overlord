@@ -15,6 +15,7 @@ import (
 	"text/template"
 
 	"github.com/AirVantage/overlord/pkg/lookable"
+	"github.com/AirVantage/overlord/pkg/set"
 
 	"github.com/BurntSushi/toml"
 )
@@ -43,43 +44,39 @@ type Resource struct {
 	ReloadCmd string `toml:"reload_cmd"`
 }
 
+// ResourceSet is a set of unique Resources.
+type ResourceSet map[*Resource]struct{}
+
+// Add a Resource to the set.
+func (rs ResourceSet) Add(r *Resource) {
+	rs[r] = struct{}{}
+}
+
 // Changes keeps track of added/removed IPs for a Resource.
-// We use maps instead of slices to avoid duplicates.
+// We store IPs as strings to support both IPv4 and IPv6.
 type Changes struct {
-	addedIPs   map[string]bool
-	removedIPs map[string]bool
+	addedIPs   set.Strings
+	removedIPs set.Strings
 }
 
 // NewChanges return a pointer to an initialized Changes struct.
 func NewChanges() *Changes {
 	return &Changes{
-		addedIPs:   make(map[string]bool),
-		removedIPs: make(map[string]bool),
+		addedIPs:   set.NewStringSet(),
+		removedIPs: set.NewStringSet(),
 	}
-}
-
-// Optimized way to get the keys of a map.
-func keys(m map[string]bool) []string {
-	result := make([]string, len(m))
-	i := 0
-	for key := range m {
-		result[i] = key
-		i++
-	}
-	return result
 }
 
 // Formats an environment variable for one or more values.
-func mkEnvVar(name string, values map[string]bool) string {
-	return name + "=" + strings.Join(keys(values), " ")
+func mkEnvVar(name string, values []string) string {
+	return name + "=" + strings.Join(values, " ")
 }
 
 func iterate() {
 
 	// log.Println("Start iteration")
 
-	resources := make(map[lookable.Lookable]map[*Resource]bool)
-	state := make(map[string]map[string]bool)
+	resources := make(map[lookable.Lookable]ResourceSet)
 
 	//load resources definition files
 	resourcesDir, err := os.Open(resourcesDirName)
@@ -109,25 +106,27 @@ func iterate() {
 
 		for _, group := range rc.Resource.Groups {
 			if resources[group] == nil {
-				resources[group] = make(map[*Resource]bool)
+				resources[group] = make(ResourceSet)
 			}
-			resources[group][&rc.Resource] = true
+			resources[group].Add(&rc.Resource)
 		}
 
 		for _, tag := range rc.Resource.Tags {
 			if resources[tag] == nil {
-				resources[tag] = make(map[*Resource]bool)
+				resources[tag] = make(ResourceSet)
 			}
-			resources[tag][&rc.Resource] = true
+			resources[tag].Add(&rc.Resource)
 		}
 
 		for _, subnet := range rc.Resource.Subnets {
 			if resources[subnet] == nil {
-				resources[subnet] = make(map[*Resource]bool)
+				resources[subnet] = make(ResourceSet)
 			}
-			resources[subnet][&rc.Resource] = true
+			resources[subnet].Add(&rc.Resource)
 		}
 	}
+
+	state := make(map[string]set.Strings)
 
 	//load state file
 	err = os.MkdirAll(filepath.Dir(stateFileName), 0777)
@@ -145,7 +144,7 @@ func iterate() {
 	// log.Println("Find Resources to update")
 
 	resourcesToUpdate := make(map[*Resource]*Changes)
-	newState := make(map[string]map[string]bool)
+	newState := make(map[string]set.Strings)
 
 	//find group ips to update
 	for g, resourcesset := range resources {
@@ -161,30 +160,30 @@ func iterate() {
 			log.Fatal("AWS API call fails: ", err)
 		}
 
-		newState[group] = make(map[string]bool)
+		newState[group] = set.NewStringSet()
 		changes := NewChanges()
 		changed := false
 
 		for _, ip := range ips {
-			newState[group][ip] = true
-			if _, stateOk := state[group][ip]; !stateOk {
+			newState[group].Add(ip)
+			if !state[group].Has(ip) {
 				changed = true
-				changes.addedIPs[ip] = true
+				changes.addedIPs.Add(ip)
 				log.Println("For group", group, "new IP:", ip)
 			}
 
 		}
 
-		for oldIp, _ := range state[group] {
-			if _, stateOk := newState[group][oldIp]; !stateOk {
+		for _, oldIP := range state[group].ToSlice() {
+			if !newState[group].Has(oldIP) {
 				changed = true
-				changes.removedIPs[oldIp] = true
-				log.Println("For group", group, "deprecated IP:", oldIp)
+				changes.removedIPs.Add(oldIP)
+				log.Println("For group", group, "deprecated IP:", oldIP)
 			}
 		}
 
 		if changed {
-			for resource, _ := range resourcesset {
+			for resource := range resourcesset {
 				log.Println("For group", group, "update ressource:", resource)
 				resourcesToUpdate[resource] = changes
 			}
@@ -196,7 +195,7 @@ func iterate() {
 	ips := make(map[string][]string)
 	for group, ipsSet := range newState {
 		ipsList := make([]string, 0, len(ipsSet))
-		for ip, _ := range ipsSet {
+		for ip := range ipsSet {
 			ipsList = append(ipsList, ip)
 		}
 		sort.Strings(ipsList)
@@ -235,7 +234,7 @@ func iterate() {
 		//cmd := exec.Command(cmdSplit[0], cmdSplit[1:]...)
 		cmd := exec.Command("bash", "-c", resource.ReloadCmd)
 		if changes != nil {
-			cmd.Env = append(os.Environ(), mkEnvVar("IP_ADDED", changes.addedIPs), mkEnvVar("IP_REMOVED", changes.removedIPs))
+			cmd.Env = append(os.Environ(), mkEnvVar("IP_ADDED", changes.addedIPs.ToSlice()), mkEnvVar("IP_REMOVED", changes.removedIPs.ToSlice()))
 		}
 		log.Println(cmd)
 		err = cmd.Start()
