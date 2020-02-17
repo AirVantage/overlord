@@ -7,17 +7,17 @@ import (
 	"log/syslog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
-	"time"
-
-	"path/filepath"
 	"text/template"
+	"time"
 
 	"github.com/AirVantage/overlord/pkg/lookable"
 	"github.com/AirVantage/overlord/pkg/set"
 
 	"github.com/BurntSushi/toml"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 )
 
 var (
@@ -146,15 +146,16 @@ func iterate() {
 	//find group ips to update
 	for g, resourcesset := range resources {
 
-		//substitute group name by var env if existing
-
 		group := g.String()
 		ips, err := g.LookupIPs(*ipv6)
 
 		// if some AWS API calls failed during the IPs lookup, stop here and exit
 		// it will keep the dest file unmodified and won't execute the reload command.
 		if err != nil {
-			log.Fatal("AWS API call fails: ", err)
+			if awsErr, ok := err.(awserr.Error); ok {
+				log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+			}
+			log.Fatal("AWS Error:", err.Error())
 		}
 
 		newState[group] = set.NewStringSet()
