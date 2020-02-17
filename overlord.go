@@ -120,6 +120,13 @@ func iterate() {
 			}
 			resources[tag][&rc.Resource] = true
 		}
+
+		for _, subnet := range rc.Resource.Subnets {
+			if resources[subnet] == nil {
+				resources[subnet] = make(map[*Resource]bool)
+			}
+			resources[subnet][&rc.Resource] = true
+		}
 	}
 
 	//load state file
