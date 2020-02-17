@@ -38,9 +38,6 @@ type Resource struct {
 	Groups    []lookable.AutoScalingGroup
 	Tags      []lookable.Tag
 	Subnets   []lookable.Subnet
-	Uid       int
-	Gid       int
-	Mode      string
 	ReloadCmd string `toml:"reload_cmd"`
 }
 
