@@ -277,6 +277,9 @@ func main() {
 	}
 	flag.Parse()
 
+	// Remove the old and possibly incompatible state file.
+	os.Remove(stateFileName)
+
 	for {
 		iterate()
 		time.Sleep(*interval)
