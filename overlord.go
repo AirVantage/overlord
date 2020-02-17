@@ -266,6 +266,7 @@ func iterate() {
 }
 
 func main() {
+	log.SetFlags(0)
 	var syslogCfg = os.Getenv("SYSLOG_ADDRESS")
 	if len(syslogCfg) > 0 {
 		syslogWriter, err := syslog.Dial("udp", syslogCfg, syslog.LOG_INFO, "av-balancing")
