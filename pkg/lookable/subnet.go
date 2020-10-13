@@ -62,7 +62,7 @@ func (s Subnet) LookupIPs(ipv6 bool) ([]string, error) {
 	for _, reservation := range resp2.Reservations {
 		for _, instance := range reservation.Instances {
 			if ipv6 {
-				output = append(output, instance.NetworkInterfaces[0].Ipv6Addresses[0].String())
+				output = append(output, *instance.NetworkInterfaces[0].Ipv6Addresses[0].Ipv6Address)
 			} else {
 				output = append(output, *instance.PrivateIpAddress)
 			}
