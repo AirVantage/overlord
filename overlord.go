@@ -1,205 +1,31 @@
 package main
 
 import (
+	"flag"
 	"io"
 	"log"
 	"log/syslog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
+	"text/template"
 	"time"
 
-	"path/filepath"
-	"text/template"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/autoscaling"
-	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/AirVantage/overlord/pkg/lookable"
+	"github.com/AirVantage/overlord/pkg/set"
 
 	"github.com/BurntSushi/toml"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 )
-
-type Lookable interface {
-	LookupIPs() ([]string, error)
-	String() string
-}
-
-type group string
-
-type tag string
-
-func (g group) String() string {
-	return string(g)
-}
-
-func (g group) LookupIPs() ([]string, error) {
-	sess := session.Must(session.NewSession())
-	as := autoscaling.New(sess)
-	ec := ec2.New(sess)
-	autoscalingGroup := string(g)
-	envSubs := os.Getenv(string(autoscalingGroup))
-	if envSubs != "" {
-		autoscalingGroup = envSubs
-	}
-	var output []string
-
-	params1 := &autoscaling.DescribeTagsInput{
-		Filters: []*autoscaling.Filter{
-			{ // Required
-				Name: aws.String("Value"),
-				Values: []*string{
-					aws.String(autoscalingGroup),
-				},
-			},
-		},
-	}
-	resp1, err := as.DescribeTags(params1)
-
-	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			// Generic AWS error with Code, Message, and original error (if any)
-			log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
-			if reqErr, ok := err.(awserr.RequestFailure); ok {
-				// A service error occurred
-				log.Println(reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
-			}
-		} else {
-			// This case should never be hit, the SDK should always return an
-			// error which satisfies the awserr.Error interface.
-			log.Println(err.Error())
-		}
-		return nil, err
-	}
-
-	for _, tag := range resp1.Tags {
-		autoscalingGroup = *tag.ResourceId
-	}
-
-	params := &autoscaling.DescribeAutoScalingGroupsInput{
-		AutoScalingGroupNames: []*string{
-			aws.String(autoscalingGroup), // Required
-		},
-	}
-
-	resp, err := as.DescribeAutoScalingGroups(params)
-
-	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			// Generic AWS error with Code, Message, and original error (if any)
-			log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
-			if reqErr, ok := err.(awserr.RequestFailure); ok {
-				// A service error occurred
-				log.Println(reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
-			}
-		} else {
-			// This case should never be hit, the SDK should always return an
-			// error which satisfies the awserr.Error interface.
-			log.Println(err.Error())
-		}
-
-		return nil, err
-	}
-
-	for _, instance := range resp.AutoScalingGroups[0].Instances {
-
-		if *instance.LifecycleState == "InService" {
-
-			params := &ec2.DescribeInstancesInput{
-				InstanceIds: []*string{
-					aws.String(*instance.InstanceId), // Required
-					// More values...
-				},
-			}
-
-			resp, err := ec.DescribeInstances(params)
-			if err != nil {
-				if awsErr, ok := err.(awserr.Error); ok {
-					// Generic AWS error with Code, Message, and original error (if any)
-					log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
-					if reqErr, ok := err.(awserr.RequestFailure); ok {
-						// A service error occurred
-						log.Println(reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
-					}
-				} else {
-					// This case should never be hit, the SDK should always return an
-					// error which satisfies the awserr.Error interface.
-					log.Println(err.Error())
-				}
-				return nil, err
-			}
-
-			// Pretty-print the response data.
-			output = append(output, *resp.Reservations[0].Instances[0].PrivateIpAddress)
-
-		}
-
-	}
-
-	return output, nil
-
-}
-
-func (t tag) String() string {
-	return string(t)
-}
-
-func (t tag) LookupIPs() ([]string, error) {
-	sess := session.Must(session.NewSession())
-	ec := ec2.New(sess)
-	var output []string
-	ec2tag := string(t)
-	envSubs := os.Getenv(string(ec2tag))
-	if envSubs != "" {
-		ec2tag = envSubs
-	}
-
-	params := &ec2.DescribeInstancesInput{
-		Filters: []*ec2.Filter{
-			{
-				Name: aws.String("tag:Name"),
-				Values: []*string{
-					aws.String(ec2tag),
-				},
-			},
-		},
-	}
-
-	resp, err := ec.DescribeInstances(params)
-	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			// Generic AWS error with Code, Message, and original error (if any)
-			log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
-			if reqErr, ok := err.(awserr.RequestFailure); ok {
-				// A service error occurred
-				log.Println(reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
-			}
-		} else {
-			// This case should never be hit, the SDK should always return an
-			// error which satisfies the awserr.Error interface.
-			log.Println(err.Error())
-		}
-		return nil, err
-	}
-
-	for _, reservation := range resp.Reservations {
-		for _, instance := range reservation.Instances {
-			if *instance.State.Name == "running" {
-				output = append(output, *instance.PrivateIpAddress)
-			}
-		}
-	}
-
-	return output, nil
-}
 
 var (
 	resourcesDirName = "/etc/overlord/resources"
 	templatesDirName = "/etc/overlord/templates"
 	stateFileName    = "/var/overlord/state.toml"
-	interval         = 30
+	interval         = flag.Duration("interval", 30*time.Second, "Interval between each lookup")
+	ipv6             = flag.Bool("ipv6", false, "Look for IPv6 addresses instead of IPv4")
 )
 
 type ResourceConfig struct {
@@ -209,51 +35,45 @@ type ResourceConfig struct {
 type Resource struct {
 	Src       string
 	Dest      string
-	Groups    []group
-	Tags      []tag
-	Uid       int
-	Gid       int
-	Mode      string
+	Groups    []lookable.AutoScalingGroup
+	Tags      []lookable.Tag
+	Subnets   []lookable.Subnet
 	ReloadCmd string `toml:"reload_cmd"`
 }
 
+// ResourceSet is a set of unique Resources.
+type ResourceSet map[*Resource]struct{}
+
+// Add a Resource to the set.
+func (rs ResourceSet) Add(r *Resource) {
+	rs[r] = struct{}{}
+}
+
 // Changes keeps track of added/removed IPs for a Resource.
-// We use maps instead of slices to avoid duplicates.
+// We store IPs as strings to support both IPv4 and IPv6.
 type Changes struct {
-	addedIPs   map[string]bool
-	removedIPs map[string]bool
+	addedIPs   set.Strings
+	removedIPs set.Strings
 }
 
 // NewChanges return a pointer to an initialized Changes struct.
 func NewChanges() *Changes {
 	return &Changes{
-		addedIPs:   make(map[string]bool),
-		removedIPs: make(map[string]bool),
+		addedIPs:   set.NewStringSet(),
+		removedIPs: set.NewStringSet(),
 	}
-}
-
-// Optimized way to get the keys of a map.
-func keys(m map[string]bool) []string {
-	result := make([]string, len(m))
-	i := 0
-	for key := range m {
-		result[i] = key
-		i++
-	}
-	return result
 }
 
 // Formats an environment variable for one or more values.
-func mkEnvVar(name string, values map[string]bool) string {
-	return name + "=" + strings.Join(keys(values), " ")
+func mkEnvVar(name string, values []string) string {
+	return name + "=" + strings.Join(values, " ")
 }
 
 func iterate() {
 
 	// log.Println("Start iteration")
 
-	resources := make(map[Lookable]map[*Resource]bool)
-	state := make(map[string]map[string]bool)
+	resources := make(map[lookable.Lookable]ResourceSet)
 
 	//load resources definition files
 	resourcesDir, err := os.Open(resourcesDirName)
@@ -283,18 +103,27 @@ func iterate() {
 
 		for _, group := range rc.Resource.Groups {
 			if resources[group] == nil {
-				resources[group] = make(map[*Resource]bool)
+				resources[group] = make(ResourceSet)
 			}
-			resources[group][&rc.Resource] = true
+			resources[group].Add(&rc.Resource)
 		}
 
 		for _, tag := range rc.Resource.Tags {
 			if resources[tag] == nil {
-				resources[tag] = make(map[*Resource]bool)
+				resources[tag] = make(ResourceSet)
 			}
-			resources[tag][&rc.Resource] = true
+			resources[tag].Add(&rc.Resource)
+		}
+
+		for _, subnet := range rc.Resource.Subnets {
+			if resources[subnet] == nil {
+				resources[subnet] = make(ResourceSet)
+			}
+			resources[subnet].Add(&rc.Resource)
 		}
 	}
+
+	state := make(map[string]set.Strings)
 
 	//load state file
 	err = os.MkdirAll(filepath.Dir(stateFileName), 0777)
@@ -312,46 +141,47 @@ func iterate() {
 	// log.Println("Find Resources to update")
 
 	resourcesToUpdate := make(map[*Resource]*Changes)
-	newState := make(map[string]map[string]bool)
+	newState := make(map[string]set.Strings)
 
 	//find group ips to update
 	for g, resourcesset := range resources {
 
-		//substitute group name by var env if existing
-
 		group := g.String()
-		ips, err := g.LookupIPs()
+		ips, err := g.LookupIPs(*ipv6)
 
 		// if some AWS API calls failed during the IPs lookup, stop here and exit
 		// it will keep the dest file unmodified and won't execute the reload command.
 		if err != nil {
-			log.Fatal("AWS API call fails: ", err)
+			if awsErr, ok := err.(awserr.Error); ok {
+				log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+			}
+			log.Fatal("AWS Error:", err.Error())
 		}
 
-		newState[group] = make(map[string]bool)
+		newState[group] = set.NewStringSet()
 		changes := NewChanges()
 		changed := false
 
 		for _, ip := range ips {
-			newState[group][ip] = true
-			if _, stateOk := state[group][ip]; !stateOk {
+			newState[group].Add(ip)
+			if !state[group].Has(ip) {
 				changed = true
-				changes.addedIPs[ip] = true
+				changes.addedIPs.Add(ip)
 				log.Println("For group", group, "new IP:", ip)
 			}
 
 		}
 
-		for oldIp, _ := range state[group] {
-			if _, stateOk := newState[group][oldIp]; !stateOk {
+		for _, oldIP := range state[group].ToSlice() {
+			if !newState[group].Has(oldIP) {
 				changed = true
-				changes.removedIPs[oldIp] = true
-				log.Println("For group", group, "deprecated IP:", oldIp)
+				changes.removedIPs.Add(oldIP)
+				log.Println("For group", group, "deprecated IP:", oldIP)
 			}
 		}
 
 		if changed {
-			for resource, _ := range resourcesset {
+			for resource := range resourcesset {
 				log.Println("For group", group, "update ressource:", resource)
 				resourcesToUpdate[resource] = changes
 			}
@@ -363,7 +193,7 @@ func iterate() {
 	ips := make(map[string][]string)
 	for group, ipsSet := range newState {
 		ipsList := make([]string, 0, len(ipsSet))
-		for ip, _ := range ipsSet {
+		for ip := range ipsSet {
 			ipsList = append(ipsList, ip)
 		}
 		sort.Strings(ipsList)
@@ -402,7 +232,7 @@ func iterate() {
 		//cmd := exec.Command(cmdSplit[0], cmdSplit[1:]...)
 		cmd := exec.Command("bash", "-c", resource.ReloadCmd)
 		if changes != nil {
-			cmd.Env = append(os.Environ(), mkEnvVar("IP_ADDED", changes.addedIPs), mkEnvVar("IP_REMOVED", changes.removedIPs))
+			cmd.Env = append(os.Environ(), mkEnvVar("IP_ADDED", changes.addedIPs.ToSlice()), mkEnvVar("IP_REMOVED", changes.removedIPs.ToSlice()))
 		}
 		log.Println(cmd)
 		err = cmd.Start()
@@ -434,6 +264,7 @@ func iterate() {
 }
 
 func main() {
+	log.SetFlags(0)
 	var syslogCfg = os.Getenv("SYSLOG_ADDRESS")
 	if len(syslogCfg) > 0 {
 		syslogWriter, err := syslog.Dial("udp", syslogCfg, syslog.LOG_INFO, "av-balancing")
@@ -442,10 +273,14 @@ func main() {
 		}
 		log.SetOutput(io.MultiWriter(os.Stdout, syslogWriter))
 	}
+	flag.Parse()
+
+	// Remove the old and possibly incompatible state file.
+	os.Remove(stateFileName)
 
 	for {
 		iterate()
-		time.Sleep(time.Duration(interval) * time.Second)
+		time.Sleep(*interval)
 	}
 }
 
