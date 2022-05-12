@@ -1,8 +1,6 @@
 package lookable
 
 import (
-	"fmt"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -37,7 +35,7 @@ func (s Subnet) LookupIPs(ipv6 bool) ([]string, error) {
 	}
 
 	if len(resp1.Subnets) == 0 {
-		return nil, fmt.Errorf("could not find subnet '%s'", s.String())
+		return output, nil
 	}
 
 	// Find the running instances
