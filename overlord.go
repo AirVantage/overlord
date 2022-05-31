@@ -162,6 +162,10 @@ func iterate() {
 		changes := NewChanges()
 		changed := false
 
+		if _, exists := state[group]; !exists {
+			state[group] = set.NewStringSet()
+		}
+
 		for _, ip := range ips {
 			newState[group].Add(ip)
 			if !state[group].Has(ip) {
@@ -255,7 +259,9 @@ func iterate() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = toml.NewEncoder(stateFile).Encode(&newState)
+	if err = toml.NewEncoder(stateFile).Encode(&newState); err != nil {
+		log.Fatal("Error writing state file:", stateFileName, ":", err)
+	}
 	state = newState
 	// log.Println("Log state", state, "in file", stateFileName)
 
@@ -269,9 +275,12 @@ func main() {
 	if len(syslogCfg) > 0 {
 		syslogWriter, err := syslog.Dial("udp", syslogCfg, syslog.LOG_INFO, "av-balancing")
 		if err != nil {
-			panic(err)
+			// Do not make this error fatal. A syslog server may
+			// not be available when deploying to a new region.
+			log.Println("warning: cannot send logs to syslog:", err)
+		} else {
+			log.SetOutput(io.MultiWriter(os.Stdout, syslogWriter))
 		}
-		log.SetOutput(io.MultiWriter(os.Stdout, syslogWriter))
 	}
 	flag.Parse()
 

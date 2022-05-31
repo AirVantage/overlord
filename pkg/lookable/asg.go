@@ -1,8 +1,6 @@
 package lookable
 
 import (
-	"fmt"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
@@ -35,11 +33,11 @@ func (asg AutoScalingGroup) LookupIPs(ipv6 bool) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(resp1.Tags) == 0 {
+		return output, nil
+	}
 
 	asgID := resp1.Tags[0].ResourceId
-	if asgID == nil {
-		return nil, fmt.Errorf("could not find ASG '%s'", asg.String())
-	}
 
 	// Find the ASG instances
 	params2 := &autoscaling.DescribeAutoScalingGroupsInput{
@@ -50,7 +48,7 @@ func (asg AutoScalingGroup) LookupIPs(ipv6 bool) ([]string, error) {
 		return nil, err
 	}
 	if len(resp2.AutoScalingGroups) == 0 {
-		return nil, fmt.Errorf("could not find ASG with tag: '%s'", asg.String())
+		return output, nil
 	}
 
 	numInstances := len(resp2.AutoScalingGroups[0].Instances)
