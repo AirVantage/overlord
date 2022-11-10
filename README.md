@@ -7,7 +7,7 @@
 
 It's heavily inspired by [confd](https://github.com/kelseyhightower/confd).
 
-## Getting Strated
+## Getting Started
 
 1. Download latest release of overlord binaries: [here](https://github.com/AirVantage/overlord/releases).
 2. Create a configuration file for your application in `/etc/overlord/resources/`. This [toml](https://github.com/toml-lang/toml) file (it has to have the .toml extension) describes the ASG to monitor, the configuration file to keep up-to-date and how to restart the application.
@@ -15,17 +15,17 @@ It's heavily inspired by [confd](https://github.com/kelseyhightower/confd).
 
 Here is an example with an [HAProxy](http://www.haproxy.org/) configuration:
 
-`/etc/overseer/resources/haproxy.toml`:
+`/etc/overlord/resources/haproxy.toml`:
 
 ```TOML
 [template]
 src = "haproxy.cfg.tmpl" #template used to generate configuration file (located in /etc/overseer/temlates/)
 dest = "/etc/haproxy/haproxy.cfg" #file to generate from the template
 hosts = ["my-asg"] #ASG to monitor
-reload_cmd = "touch /var/run/haproxy.pid; haproxy -D -f /etc/haproxy/haproxy.cfg -p /var/run/haproxy.pid -sf $(cat /var/run/haproxy.pid)" #command to relaod the configuration
+reload_cmd = "touch /var/run/haproxy.pid; haproxy -D -f /etc/haproxy/haproxy.cfg -p /var/run/haproxy.pid -sf $(cat /var/run/haproxy.pid)" #command to reload the configuration
 ```
 
-`/etc/overseer/temlates/haproxy.cf.tmpl`:
+`/etc/overlord/temlates/haproxy.cf.tmpl`:
 
 ```
 defaults
