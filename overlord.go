@@ -26,8 +26,9 @@ import (
 )
 
 var (
-	resourcesDirName = "/etc/overlord/resources"
-	templatesDirName = "/etc/overlord/templates"
+	configRoot       = flag.String("etc", "/etc/overlord", "path to configuration directory")
+	resourcesDirName = "resources"
+	templatesDirName = "templates"
 	interval         = flag.Duration("interval", 30*time.Second, "Interval between each lookup")
 	ipv6             = flag.Bool("ipv6", false, "Look for IPv6 addresses instead of IPv4")
 )
@@ -78,11 +79,10 @@ func mkEnvVar(name string, values []string) string {
 func iterate(ctx context.Context, cfg aws.Config, state State) State {
 
 	// log.Println("Start iteration")
-
 	resources := make(map[lookable.Lookable]ResourceSet)
 
 	//load resources definition files
-	resourcesDir, err := os.Open(resourcesDirName)
+	resourcesDir, err := os.Open(filepath.Join(*configRoot, resourcesDirName))
 	defer func() { resourcesDir.Close() }()
 	if err != nil {
 		log.Fatal(err)
@@ -94,13 +94,12 @@ func iterate(ctx context.Context, cfg aws.Config, state State) State {
 	}
 
 	for _, resourceFile := range resourcesFiles {
-
 		if filepath.Ext(resourceFile.Name()) != ".toml" || resourceFile.IsDir() {
 			continue
 		}
 
 		var rc *ResourceConfig
-		_, err := toml.DecodeFile(filepath.Join(resourcesDirName, resourceFile.Name()), &rc)
+		_, err := toml.DecodeFile(filepath.Join(*configRoot, resourcesDirName, resourceFile.Name()), &rc)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -169,7 +168,6 @@ func iterate(ctx context.Context, cfg aws.Config, state State) State {
 				changes.addedIPs.Add(ip)
 				log.Println("For group", group, "new IP:", ip)
 			}
-
 		}
 
 		for _, oldIP := range state[group].ToSlice() {
@@ -186,7 +184,6 @@ func iterate(ctx context.Context, cfg aws.Config, state State) State {
 				resourcesToUpdate[resource] = changes
 			}
 		}
-
 	}
 
 	//make list of ips
@@ -203,8 +200,7 @@ func iterate(ctx context.Context, cfg aws.Config, state State) State {
 	// log.Println("Update resources and restart processes")
 	//generate resources
 	for resource, changes := range resourcesToUpdate {
-
-		tmpl, err := template.ParseFiles(filepath.Join(templatesDirName, resource.Src))
+		tmpl, err := template.ParseFiles(filepath.Join(*configRoot, templatesDirName, resource.Src))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -246,15 +242,13 @@ func iterate(ctx context.Context, cfg aws.Config, state State) State {
 		} else {
 			log.Println("For resource", resource, "reload cmd", resource.ReloadCmd, "finished successfuly")
 		}
-
 	}
 
 	//write state file
-	return newState
 	// log.Println("Log state", state, "in file", stateFileName)
 
 	// log.Println("Iteration done")
-
+	return newState
 }
 
 func main() {
