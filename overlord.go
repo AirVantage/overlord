@@ -23,7 +23,6 @@ import (
 var (
 	resourcesDirName = "/etc/overlord/resources"
 	templatesDirName = "/etc/overlord/templates"
-	stateFileName    = "/var/overlord/state.toml"
 	interval         = flag.Duration("interval", 30*time.Second, "Interval between each lookup")
 	ipv6             = flag.Bool("ipv6", false, "Look for IPv6 addresses instead of IPv4")
 )
@@ -49,6 +48,8 @@ func (rs ResourceSet) Add(r *Resource) {
 	rs[r] = struct{}{}
 }
 
+type State map[string]set.Strings
+
 // Changes keeps track of added/removed IPs for a Resource.
 // We store IPs as strings to support both IPv4 and IPv6.
 type Changes struct {
@@ -69,7 +70,7 @@ func mkEnvVar(name string, values []string) string {
 	return name + "=" + strings.Join(values, " ")
 }
 
-func iterate() {
+func iterate(state State) State {
 
 	// log.Println("Start iteration")
 
@@ -121,19 +122,6 @@ func iterate() {
 			}
 			resources[subnet].Add(&rc.Resource)
 		}
-	}
-
-	state := make(map[string]set.Strings)
-
-	//load state file
-	err = os.MkdirAll(filepath.Dir(stateFileName), 0777)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	_, err = toml.DecodeFile(stateFileName, &state)
-	if err != nil && !os.IsNotExist(err) {
-		log.Fatal(err)
 	}
 
 	// log.Println("Load state from", stateFileName, ":", state)
@@ -254,15 +242,7 @@ func iterate() {
 	}
 
 	//write state file
-	stateFile, err := os.Create(stateFileName)
-	defer func() { stateFile.Close() }()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err = toml.NewEncoder(stateFile).Encode(&newState); err != nil {
-		log.Fatal("Error writing state file:", stateFileName, ":", err)
-	}
-	state = newState
+	return newState
 	// log.Println("Log state", state, "in file", stateFileName)
 
 	// log.Println("Iteration done")
@@ -270,8 +250,13 @@ func iterate() {
 }
 
 func main() {
+	var (
+		syslogCfg     string
+		runningState  State = make(State)
+	)
+
 	log.SetFlags(0)
-	var syslogCfg = os.Getenv("SYSLOG_ADDRESS")
+	syslogCfg = os.Getenv("SYSLOG_ADDRESS")
 	if len(syslogCfg) > 0 {
 		syslogWriter, err := syslog.Dial("udp", syslogCfg, syslog.LOG_INFO, "av-balancing")
 		if err != nil {
@@ -282,13 +267,11 @@ func main() {
 			log.SetOutput(io.MultiWriter(os.Stdout, syslogWriter))
 		}
 	}
+
 	flag.Parse()
 
-	// Remove the old and possibly incompatible state file.
-	os.Remove(stateFileName)
-
 	for {
-		iterate()
+		runningState = iterate(runningState)
 		time.Sleep(*interval)
 	}
 }
