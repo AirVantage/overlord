@@ -1,9 +1,12 @@
 package lookable
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/ec2"
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
 // Tag is a Lookable EC2 tag name.
@@ -14,24 +17,24 @@ func (t Tag) String() string {
 }
 
 // LookupIPs of all the instances named with the given tag.
-func (t Tag) LookupIPs(ipv6 bool) ([]string, error) {
-	sess := session.Must(session.NewSession())
+func (t Tag) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error) {
+
 	var output []string
 
 	params := &ec2.DescribeInstancesInput{
-		Filters: []*ec2.Filter{
+		Filters: []types.Filter{
 			{
 				Name:   aws.String("tag:Name"),
-				Values: []*string{aws.String(t.String())},
+				Values: []string{t.String()},
 			},
 			{
 				Name:   aws.String("instance-state-name"),
-				Values: []*string{aws.String(ec2.InstanceStateNameRunning)},
+				Values: []string{string(types.InstanceStateNameRunning)},
 			},
 		},
 	}
 
-	resp, err := ec2.New(sess).DescribeInstances(params)
+	resp, err := ec2.NewFromConfig(cfg).DescribeInstances(ctx, params)
 	if err != nil {
 		return nil, err
 	}

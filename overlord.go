@@ -12,12 +12,17 @@ import (
 	"strings"
 	"text/template"
 	"time"
+	"errors"
+	"context"
 
 	"github.com/AirVantage/overlord/pkg/lookable"
 	"github.com/AirVantage/overlord/pkg/set"
 
 	"github.com/BurntSushi/toml"
-	"github.com/aws/aws-sdk-go/aws/awserr"
+
+	"github.com/aws/smithy-go"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
 )
 
 var (
@@ -70,7 +75,7 @@ func mkEnvVar(name string, values []string) string {
 	return name + "=" + strings.Join(values, " ")
 }
 
-func iterate(state State) State {
+func iterate(ctx context.Context, cfg aws.Config, state State) State {
 
 	// log.Println("Start iteration")
 
@@ -135,15 +140,18 @@ func iterate(state State) State {
 	for g, resourcesset := range resources {
 
 		group := g.String()
-		ips, err := g.LookupIPs(*ipv6)
+		ips, err := g.LookupIPs(ctx, cfg, *ipv6)
 
 		// if some AWS API calls failed during the IPs lookup, stop here and exit
 		// it will keep the dest file unmodified and won't execute the reload command.
 		if err != nil {
-			if awsErr, ok := err.(awserr.Error); ok {
-				log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+			var oe *smithy.OperationError
+			if errors.As(err, &oe) {
+				log.Fatal("Failed service call processing ..: service ", oe.Service(), ", operation: ", oe.Operation(), ", error: ", oe.Unwrap())
+				
+			} else {
+				log.Fatal("Error processing ..:", err.Error())
 			}
-			log.Fatal("AWS Error:", err.Error())
 		}
 
 		newState[group] = set.NewStringSet()
@@ -252,6 +260,8 @@ func iterate(state State) State {
 func main() {
 	var (
 		syslogCfg     string
+		cfg	      aws.Config
+		ctx	      context.Context = context.TODO()
 		runningState  State = make(State)
 	)
 
@@ -268,10 +278,16 @@ func main() {
 		}
 	}
 
+	// Initialise AWS SDK v2, process default configuration
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}	
+
 	flag.Parse()
 
 	for {
-		runningState = iterate(runningState)
+		runningState = iterate(ctx, cfg, runningState)
 		time.Sleep(*interval)
 	}
 }

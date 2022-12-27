@@ -1,10 +1,14 @@
 package lookable
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/autoscaling"
-	"github.com/aws/aws-sdk-go/service/ec2"
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/autoscaling"
+	asgtypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
 )
 
 // AutoScalingGroup is a Lookable ASG tag name.
@@ -15,21 +19,21 @@ func (asg AutoScalingGroup) String() string {
 }
 
 // LookupIPs of all the instances in this AutoScalingGroup.
-func (asg AutoScalingGroup) LookupIPs(ipv6 bool) ([]string, error) {
-	sess := session.Must(session.NewSession())
-	as := autoscaling.New(sess)
+func (asg AutoScalingGroup) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error) {
+
+	as := autoscaling.NewFromConfig(cfg)
 	var output []string
 
 	// Find the ASG id
 	params1 := &autoscaling.DescribeTagsInput{
-		Filters: []*autoscaling.Filter{
+		Filters: []asgtypes.Filter{
 			{
 				Name:   aws.String("Value"),
-				Values: []*string{aws.String(asg.String())},
+				Values: []string{asg.String()},
 			},
 		},
 	}
-	resp1, err := as.DescribeTags(params1)
+	resp1, err := as.DescribeTags(ctx, params1)
 	if err != nil {
 		return nil, err
 	}
@@ -41,9 +45,9 @@ func (asg AutoScalingGroup) LookupIPs(ipv6 bool) ([]string, error) {
 
 	// Find the ASG instances
 	params2 := &autoscaling.DescribeAutoScalingGroupsInput{
-		AutoScalingGroupNames: []*string{asgID},
+		AutoScalingGroupNames: []string{*asgID},
 	}
-	resp2, err := as.DescribeAutoScalingGroups(params2)
+	resp2, err := as.DescribeAutoScalingGroups(ctx, params2)
 	if err != nil {
 		return nil, err
 	}
@@ -57,10 +61,10 @@ func (asg AutoScalingGroup) LookupIPs(ipv6 bool) ([]string, error) {
 	}
 
         // Make a list of healthy instance ID in the ASG
-        instances := make([]*string, 0, numInstances)
+        instances := make([]string, 0, numInstances)
         for _, inst := range resp2.AutoScalingGroups[0].Instances {
-                if (*inst.HealthStatus == "Healthy" && *inst.LifecycleState == "InService") {
-                        instances = append(instances, inst.InstanceId)
+                if (*inst.HealthStatus == "Healthy" && inst.LifecycleState == "InService") {
+                        instances = append(instances, *inst.InstanceId)
                 }
         }
 
@@ -73,14 +77,14 @@ func (asg AutoScalingGroup) LookupIPs(ipv6 bool) ([]string, error) {
 	// Find running instances IP
 	params3 := &ec2.DescribeInstancesInput{
 		InstanceIds: instances,
-		Filters: []*ec2.Filter{
+		Filters: []ec2types.Filter{
 			{
 				Name:   aws.String("instance-state-name"),
-				Values: []*string{aws.String(ec2.InstanceStateNameRunning)},
+				Values: []string{string(ec2types.InstanceStateNameRunning)},
 			},
 		},
 	}
-	resp3, err := ec2.New(sess).DescribeInstances(params3)
+	resp3, err := ec2.NewFromConfig(cfg).DescribeInstances(ctx, params3)
 	if err != nil {
 		return nil, err
 	}

@@ -1,9 +1,12 @@
 package lookable
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/ec2"
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
 // Subnet is a Lookable AWS subnet tag name.
@@ -14,22 +17,22 @@ func (s Subnet) String() string {
 }
 
 // LookupIPs of all the instances belonging to the given subnet.
-func (s Subnet) LookupIPs(ipv6 bool) ([]string, error) {
-	sess := session.Must(session.NewSession())
-	ec := ec2.New(sess)
+func (s Subnet) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error) {
+
+	ec := ec2.NewFromConfig(cfg)
 	var output []string
 
 	// Find the subnet
 	params1 := &ec2.DescribeSubnetsInput{
-		Filters: []*ec2.Filter{
+		Filters: []types.Filter{
 			{
 				Name:   aws.String("tag:Name"),
-				Values: []*string{aws.String(s.String())},
+				Values: []string{s.String()},
 			},
 		},
 	}
 
-	resp1, err := ec.DescribeSubnets(params1)
+	resp1, err := ec.DescribeSubnets(ctx, params1)
 	if err != nil {
 		return nil, err
 	}
@@ -40,19 +43,19 @@ func (s Subnet) LookupIPs(ipv6 bool) ([]string, error) {
 
 	// Find the running instances
 	params2 := &ec2.DescribeInstancesInput{
-		Filters: []*ec2.Filter{
+		Filters: []types.Filter{
 			{
 				Name:   aws.String("subnet-id"),
-				Values: []*string{resp1.Subnets[0].SubnetId},
+				Values: []string{*resp1.Subnets[0].SubnetId},
 			},
 			{
 				Name:   aws.String("instance-state-name"),
-				Values: []*string{aws.String(ec2.InstanceStateNameRunning)},
+				Values: []string{string(types.InstanceStateNameRunning)},
 			},
 		},
 	}
 
-	resp2, err := ec.DescribeInstances(params2)
+	resp2, err := ec.DescribeInstances(ctx, params2)
 	if err != nil {
 		return nil, err
 	}
