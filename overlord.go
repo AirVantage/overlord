@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strings"
 	"text/template"
 	"time"
 	"errors"
@@ -46,14 +45,6 @@ type Resource struct {
 	ReloadCmd string `toml:"reload_cmd"`
 }
 
-// ResourceSet is a set of unique Resources.
-type ResourceSet map[*Resource]struct{}
-
-// Add a Resource to the set.
-func (rs ResourceSet) Add(r *Resource) {
-	rs[r] = struct{}{}
-}
-
 type State map[string]set.Strings
 
 // Changes keeps track of added/removed IPs for a Resource.
@@ -71,15 +62,14 @@ func NewChanges() *Changes {
 	}
 }
 
-// Formats an environment variable for one or more values.
-func mkEnvVar(name string, values []string) string {
-	return name + "=" + strings.Join(values, " ")
-}
-
 func iterate(ctx context.Context, cfg aws.Config, state State) State {
+	var (
+		resources map[lookable.Lookable][]*Resource = make(map[lookable.Lookable][]*Resource)
+		resourcesToUpdate map[*Resource]*Changes = make(map[*Resource]*Changes)
+		newState State = make(State)
+	)
 
 	// log.Println("Start iteration")
-	resources := make(map[lookable.Lookable]ResourceSet)
 
 	//load resources definition files
 	resourcesDir, err := os.Open(filepath.Join(*configRoot, resourcesDirName))
@@ -104,36 +94,23 @@ func iterate(ctx context.Context, cfg aws.Config, state State) State {
 			log.Fatal(err)
 		}
 
-		// log.Println("Read File", resourceFile.Name(), ":", rc)
+		log.Println("Read File", resourceFile.Name(), ":", rc)
 
+		// Store each resource in a reverse map, listing resource linked to each lookable to easily match updates need per lookable changes
 		for _, group := range rc.Resource.Groups {
-			if resources[group] == nil {
-				resources[group] = make(ResourceSet)
-			}
-			resources[group].Add(&rc.Resource)
+			resources[group] = append( resources[group], &rc.Resource)
 		}
 
 		for _, tag := range rc.Resource.Tags {
-			if resources[tag] == nil {
-				resources[tag] = make(ResourceSet)
-			}
-			resources[tag].Add(&rc.Resource)
+			resources[tag] = append( resources[tag], &rc.Resource)
 		}
 
 		for _, subnet := range rc.Resource.Subnets {
-			if resources[subnet] == nil {
-				resources[subnet] = make(ResourceSet)
-			}
-			resources[subnet].Add(&rc.Resource)
+			resources[subnet] = append( resources[subnet], &rc.Resource)
 		}
 	}
 
-	// log.Println("Load state from", stateFileName, ":", state)
-
 	// log.Println("Find Resources to update")
-
-	resourcesToUpdate := make(map[*Resource]*Changes)
-	newState := make(map[string]set.Strings)
 
 	//find group ips to update
 	for g, resourcesset := range resources {
@@ -160,7 +137,6 @@ func iterate(ctx context.Context, cfg aws.Config, state State) State {
 		if _, exists := state[group]; !exists {
 			state[group] = set.NewStringSet()
 		}
-
 		for _, ip := range ips {
 			newState[group].Add(ip)
 			if !state[group].Has(ip) {
@@ -178,15 +154,17 @@ func iterate(ctx context.Context, cfg aws.Config, state State) State {
 			}
 		}
 
+		// handle template file change ?
+		// handle resource added with existing lookable ?
 		if changed {
-			for resource := range resourcesset {
+			for _, resource := range resourcesset {
 				log.Println("For group", group, "update ressource:", resource)
 				resourcesToUpdate[resource] = changes
 			}
 		}
 	}
 
-	//make list of ips
+	// Convert set to sorted array for use with text/template
 	ips := make(map[string][]string)
 	for group, ipsSet := range newState {
 		ipsList := make([]string, 0, len(ipsSet))
@@ -244,9 +222,7 @@ func iterate(ctx context.Context, cfg aws.Config, state State) State {
 		}
 	}
 
-	//write state file
-	// log.Println("Log state", state, "in file", stateFileName)
-
+	// log.Println("Log state", state)
 	// log.Println("Iteration done")
 	return newState
 }
@@ -285,10 +261,3 @@ func main() {
 		time.Sleep(*interval)
 	}
 }
-
-// func main() {
-// 	for {
-// 		log.Println(lookupIPs("qa-site-survey-instance"))
-// 		time.Sleep(time.Duration(30)*time.Second)
-// 	}
-// }
