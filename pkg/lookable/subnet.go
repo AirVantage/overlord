@@ -62,7 +62,7 @@ func (s Subnet) doLookupIPs(api EC2API, ctx context.Context, ipv6 bool) ([]strin
 	for _, reservation := range resp2.Reservations {
 		for _, instance := range reservation.Instances {
 			if ipv6 {
-				output = append(output, *instance.NetworkInterfaces[0].Ipv6Addresses[0].Ipv6Address)
+				output = append(output, *instance.Ipv6Address)
 			} else {
 				output = append(output, *instance.PrivateIpAddress)
 			}

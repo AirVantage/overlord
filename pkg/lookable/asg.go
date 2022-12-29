@@ -23,28 +23,15 @@ func (asg AutoScalingGroup) doLookupIPs(as ASGAPI, ec EC2API, ctx context.Contex
 
 	var output []string
 
-	// Find the ASG id
-	params1 := &autoscaling.DescribeTagsInput{
+	// Find the ASG instances
+	params2 := &autoscaling.DescribeAutoScalingGroupsInput{
 		Filters: []asgtypes.Filter{
 			{
-				Name:   aws.String("Value"),
+				// FIXME: Should we use "tag:Name" to match other filters ?
+				Name:   aws.String("tag-value"),
 				Values: []string{asg.String()},
 			},
 		},
-	}
-	resp1, err := as.DescribeTags(ctx, params1)
-	if err != nil {
-		return nil, err
-	}
-	if len(resp1.Tags) == 0 {
-		return output, nil
-	}
-
-	asgID := resp1.Tags[0].ResourceId
-
-	// Find the ASG instances
-	params2 := &autoscaling.DescribeAutoScalingGroupsInput{
-		AutoScalingGroupNames: []string{*asgID},
 	}
 	resp2, err := as.DescribeAutoScalingGroups(ctx, params2)
 	if err != nil {
@@ -91,7 +78,7 @@ func (asg AutoScalingGroup) doLookupIPs(as ASGAPI, ec EC2API, ctx context.Contex
 	for _, reservation := range resp3.Reservations {
 		for _, instance := range reservation.Instances {
 			if ipv6 {
-				output = append(output, *instance.NetworkInterfaces[0].Ipv6Addresses[0].Ipv6Address)
+				output = append(output, *instance.Ipv6Address)
 			} else {
 				output = append(output, *instance.PrivateIpAddress)
 			}
