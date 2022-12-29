@@ -11,13 +11,13 @@ import (
 
 // Tag is a Lookable EC2 tag name.
 type Tag string
-
+	
 func (t Tag) String() string {
 	return string(t)
 }
 
 // LookupIPs of all the instances named with the given tag.
-func (t Tag) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error) {
+func (t Tag) doLookupIPs(api EC2API, ctx context.Context, ipv6 bool) ([]string, error) {
 
 	var output []string
 
@@ -34,7 +34,7 @@ func (t Tag) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string
 		},
 	}
 
-	resp, err := ec2.NewFromConfig(cfg).DescribeInstances(ctx, params)
+	resp, err := api.DescribeInstances(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -50,4 +50,9 @@ func (t Tag) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string
 	}
 
 	return output, nil
+}
+
+// LookupIPs of all the instances named with the given tag.
+func (t Tag) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error) {
+	return t.doLookupIPs( ec2.NewFromConfig(cfg), ctx, ipv6)
 }

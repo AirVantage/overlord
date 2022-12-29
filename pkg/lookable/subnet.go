@@ -17,9 +17,8 @@ func (s Subnet) String() string {
 }
 
 // LookupIPs of all the instances belonging to the given subnet.
-func (s Subnet) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error) {
+func (s Subnet) doLookupIPs(api EC2API, ctx context.Context, ipv6 bool) ([]string, error) {
 
-	ec := ec2.NewFromConfig(cfg)
 	var output []string
 
 	// Find the subnet
@@ -32,7 +31,7 @@ func (s Subnet) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]str
 		},
 	}
 
-	resp1, err := ec.DescribeSubnets(ctx, params1)
+	resp1, err := api.DescribeSubnets(ctx, params1)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +54,7 @@ func (s Subnet) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]str
 		},
 	}
 
-	resp2, err := ec.DescribeInstances(ctx, params2)
+	resp2, err := api.DescribeInstances(ctx, params2)
 	if err != nil {
 		return nil, err
 	}
@@ -71,4 +70,9 @@ func (s Subnet) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]str
 	}
 
 	return output, nil
+}
+
+// Implement public interface
+func (s Subnet) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error) {
+	return s.doLookupIPs(ec2.NewFromConfig(cfg), ctx, ipv6)
 }

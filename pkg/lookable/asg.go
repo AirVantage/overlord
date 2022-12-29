@@ -19,9 +19,8 @@ func (asg AutoScalingGroup) String() string {
 }
 
 // LookupIPs of all the instances in this AutoScalingGroup.
-func (asg AutoScalingGroup) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error) {
+func (asg AutoScalingGroup) doLookupIPs(as ASGAPI, ec EC2API, ctx context.Context, ipv6 bool) ([]string, error) {
 
-	as := autoscaling.NewFromConfig(cfg)
 	var output []string
 
 	// Find the ASG id
@@ -84,7 +83,7 @@ func (asg AutoScalingGroup) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 
 			},
 		},
 	}
-	resp3, err := ec2.NewFromConfig(cfg).DescribeInstances(ctx, params3)
+	resp3, err := ec.DescribeInstances(ctx, params3)
 	if err != nil {
 		return nil, err
 	}
@@ -100,4 +99,9 @@ func (asg AutoScalingGroup) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 
 	}
 
 	return output, nil
+}
+
+// LookupIPs of all the instances in this AutoScalingGroup.
+func (asg AutoScalingGroup) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error) {
+	return asg.doLookupIPs(autoscaling.NewFromConfig(cfg), ec2.NewFromConfig(cfg), ctx, ipv6)
 }
