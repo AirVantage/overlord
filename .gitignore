@@ -1,6 +1,7 @@
 # Temporary files
 *~
 .*~
+\#*\#
 
 # Binaries for programs and plugins
 *.exe

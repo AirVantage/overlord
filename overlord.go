@@ -13,12 +13,15 @@ import (
 	"time"
 	"errors"
 	"context"
-
+	
 	"github.com/AirVantage/overlord/pkg/lookable"
+	"github.com/AirVantage/overlord/pkg/resource"
+	"github.com/AirVantage/overlord/pkg/changes"
+	"github.com/AirVantage/overlord/pkg/state"
 	"github.com/AirVantage/overlord/pkg/set"
 
 	"github.com/BurntSushi/toml"
-
+	
 	"github.com/aws/smithy-go"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -32,69 +35,45 @@ var (
 	ipv6             = flag.Bool("ipv6", false, "Look for IPv6 addresses instead of IPv4")
 )
 
-type ResourceConfig struct {
-	Resource Resource `toml:"template"`
-}
-
-type Resource struct {
-	Src       string
-	Dest      string
-	Groups    []lookable.AutoScalingGroup
-	Tags      []lookable.Tag
-	Subnets   []lookable.Subnet
-	ReloadCmd string `toml:"reload_cmd"`
-}
-
-type State map[string]set.Strings
-
-// Changes keeps track of added/removed IPs for a Resource.
-// We store IPs as strings to support both IPv4 and IPv6.
-type Changes struct {
-	addedIPs   set.Strings
-	removedIPs set.Strings
-}
-
-// NewChanges return a pointer to an initialized Changes struct.
-func NewChanges() *Changes {
-	return &Changes{
-		addedIPs:   set.NewStringSet(),
-		removedIPs: set.NewStringSet(),
-	}
-}
-
-func iterate(ctx context.Context, cfg aws.Config, state State) State {
+func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state.State {
 	var (
-		resources map[lookable.Lookable][]*Resource = make(map[lookable.Lookable][]*Resource)
-		resourcesToUpdate map[*Resource]*Changes = make(map[*Resource]*Changes)
-		newState State = make(State)
+		resources map[lookable.Lookable][]*resource.Resource = make(map[lookable.Lookable][]*resource.Resource)
+		resourcesToUpdate map[*resource.Resource]*changes.Changes[string] = make(map[*resource.Resource]*changes.Changes[string])
+		newState *state.State = state.New()
 	)
 
 	// log.Println("Start iteration")
-
+	
 	//load resources definition files
 	resourcesDir, err := os.Open(filepath.Join(*configRoot, resourcesDirName))
 	defer func() { resourcesDir.Close() }()
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	
 	resourcesFiles, err := resourcesDir.Readdir(0)
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	
 	for _, resourceFile := range resourcesFiles {
 		if filepath.Ext(resourceFile.Name()) != ".toml" || resourceFile.IsDir() {
 			continue
 		}
 
-		var rc *ResourceConfig
+		var rc *resource.ResourceConfig
 		_, err := toml.DecodeFile(filepath.Join(*configRoot, resourcesDirName, resourceFile.Name()), &rc)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		log.Println("Read File", resourceFile.Name(), ":", rc)
+
+		rc.Resource.SrcFSInfo, err = os.Stat( filepath.Join(*configRoot, templatesDirName, rc.Resource.Src) )
+		if err != nil {
+			log.Fatal(err)
+		}
+		newState.Templates[rc.Resource.Src] = &rc.Resource
 
 		// Store each resource in a reverse map, listing resource linked to each lookable to easily match updates need per lookable changes
 		for _, group := range rc.Resource.Groups {
@@ -124,51 +103,66 @@ func iterate(ctx context.Context, cfg aws.Config, state State) State {
 			var oe *smithy.OperationError
 			if errors.As(err, &oe) {
 				log.Fatal("Failed service call processing ..: service ", oe.Service(), ", operation: ", oe.Operation(), ", error: ", oe.Unwrap())
-				
+
 			} else {
 				log.Fatal("Error processing ..:", err.Error())
 			}
 		}
 
-		newState[group] = set.NewStringSet()
-		changes := NewChanges()
+		newState.Ipsets[group] = set.New[string]()
+		changes := changes.New[string]()
 		changed := false
 
-		if _, exists := state[group]; !exists {
-			state[group] = set.NewStringSet()
+		if _, exists := prevState.Ipsets[group]; !exists {
+			prevState.Ipsets[group] = set.New[string]()
 		}
+
 		for _, ip := range ips {
-			newState[group].Add(ip)
-			if !state[group].Has(ip) {
+			newState.Ipsets[group].Add(ip)
+			if !prevState.Ipsets[group].Has(ip) {
 				changed = true
-				changes.addedIPs.Add(ip)
+				changes.Add(ip)
 				log.Println("For group", group, "new IP:", ip)
 			}
 		}
 
-		for _, oldIP := range state[group].ToSlice() {
-			if !newState[group].Has(oldIP) {
+		for _, oldIP := range prevState.Ipsets[group].ToSlice() {
+			if !newState.Ipsets[group].Has(oldIP) {
 				changed = true
-				changes.removedIPs.Add(oldIP)
+				changes.Remove(oldIP)
 				log.Println("For group", group, "deprecated IP:", oldIP)
 			}
 		}
 
-		// handle template file change ?
-		// handle resource added with existing lookable ?
 		if changed {
 			for _, resource := range resourcesset {
 				log.Println("For group", group, "update ressource:", resource)
-				resourcesToUpdate[resource] = changes
+
+				// Merge Changes to store IP changes across differents aws resources:
+				if prevChanges, exists := resourcesToUpdate[resource]; exists {
+					resourcesToUpdate[resource] = prevChanges.Merge(changes)
+				} else {
+					resourcesToUpdate[resource] = changes
+				}
+			}
+		}
+	}
+
+	// If new resource or template file changed since last run:
+	for file, rc := range newState.Templates {
+		if prevrc, exists := prevState.Templates[file]; !exists || rc.SrcFSInfo.ModTime().Sub(prevrc.SrcFSInfo.ModTime()) > 0 {
+			log.Println("Template", file, "changed:", rc.SrcFSInfo.ModTime() )
+			if _, exists := resourcesToUpdate[rc]; !exists {
+				resourcesToUpdate[rc] = changes.New[string]()
 			}
 		}
 	}
 
 	// Convert set to sorted array for use with text/template
 	ips := make(map[string][]string)
-	for group, ipsSet := range newState {
-		ipsList := make([]string, 0, len(ipsSet))
-		for ip := range ipsSet {
+	for group, ipsSet := range newState.Ipsets {
+		ipsList := make([]string, 0, len(*ipsSet))
+		for ip := range *ipsSet {
 			ipsList = append(ipsList, ip)
 		}
 		sort.Strings(ipsList)
@@ -206,7 +200,7 @@ func iterate(ctx context.Context, cfg aws.Config, state State) State {
 		//cmd := exec.Command(cmdSplit[0], cmdSplit[1:]...)
 		cmd := exec.Command("bash", "-c", resource.ReloadCmd)
 		if changes != nil {
-			cmd.Env = append(os.Environ(), mkEnvVar("IP_ADDED", changes.addedIPs.ToSlice()), mkEnvVar("IP_REMOVED", changes.removedIPs.ToSlice()))
+			cmd.Env = append(os.Environ(), mkEnvVar("IP_ADDED", changes.Added()), mkEnvVar("IP_REMOVED", changes.Removed()))
 		}
 		log.Println(cmd)
 		err = cmd.Start()
@@ -229,10 +223,10 @@ func iterate(ctx context.Context, cfg aws.Config, state State) State {
 
 func main() {
 	var (
-		syslogCfg     string
-		cfg	      aws.Config
-		ctx	      context.Context = context.TODO()
-		runningState  State = make(State)
+		syslogCfg      string
+		cfg            aws.Config
+		ctx            context.Context = context.TODO()
+		runningState  *state.State = state.New()
 	)
 
 	log.SetFlags(0)
@@ -252,7 +246,7 @@ func main() {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		log.Fatal(err)
-	}	
+	}
 
 	flag.Parse()
 
