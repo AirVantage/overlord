@@ -23,11 +23,10 @@ func (ss Strings) Has(s string) bool {
 
 // ToSlice returns a copy the set as a slice of strings.
 func (ss Strings) ToSlice() []string {
-	slice := make([]string, len(ss))
-	i := 0
-	for key := range ss {
-		slice[i] = key
-		i++
+	slice := make([]string, 0, len(ss))
+
+	for key, _ := range ss {
+		slice = append(slice, key)
 	}
 	return slice
 }
