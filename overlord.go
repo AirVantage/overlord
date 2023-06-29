@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"log/syslog"
@@ -11,20 +14,19 @@ import (
 	"sort"
 	"text/template"
 	"time"
-	"errors"
-	"context"
-	
+
+	"github.com/AirVantage/overlord/build"
+	"github.com/AirVantage/overlord/pkg/changes"
 	"github.com/AirVantage/overlord/pkg/lookable"
 	"github.com/AirVantage/overlord/pkg/resource"
-	"github.com/AirVantage/overlord/pkg/changes"
-	"github.com/AirVantage/overlord/pkg/state"
 	"github.com/AirVantage/overlord/pkg/set"
+	"github.com/AirVantage/overlord/pkg/state"
 
 	"github.com/BurntSushi/toml"
-	
-	"github.com/aws/smithy-go"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/smithy-go"
 )
 
 var (
@@ -37,25 +39,25 @@ var (
 
 func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state.State {
 	var (
-		resources map[lookable.Lookable][]*resource.Resource = make(map[lookable.Lookable][]*resource.Resource)
+		resources         map[lookable.Lookable][]*resource.Resource      = make(map[lookable.Lookable][]*resource.Resource)
 		resourcesToUpdate map[*resource.Resource]*changes.Changes[string] = make(map[*resource.Resource]*changes.Changes[string])
-		newState *state.State = state.New()
+		newState          *state.State                                    = state.New()
 	)
 
 	// log.Println("Start iteration")
-	
+
 	//load resources definition files
 	resourcesDir, err := os.Open(filepath.Join(*configRoot, resourcesDirName))
 	defer func() { resourcesDir.Close() }()
 	if err != nil {
 		log.Fatal(err)
 	}
-	
+
 	resourcesFiles, err := resourcesDir.Readdir(0)
 	if err != nil {
 		log.Fatal(err)
 	}
-	
+
 	for _, resourceFile := range resourcesFiles {
 		if filepath.Ext(resourceFile.Name()) != ".toml" || resourceFile.IsDir() {
 			continue
@@ -69,7 +71,7 @@ func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state
 
 		log.Println("Read File", resourceFile.Name(), ":", rc)
 
-		rc.Resource.SrcFSInfo, err = os.Stat( filepath.Join(*configRoot, templatesDirName, rc.Resource.Src) )
+		rc.Resource.SrcFSInfo, err = os.Stat(filepath.Join(*configRoot, templatesDirName, rc.Resource.Src))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -77,15 +79,15 @@ func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state
 
 		// Store each resource in a reverse map, listing resource linked to each lookable to easily match updates need per lookable changes
 		for _, group := range rc.Resource.Groups {
-			resources[group] = append( resources[group], &rc.Resource)
+			resources[group] = append(resources[group], &rc.Resource)
 		}
 
 		for _, tag := range rc.Resource.Tags {
-			resources[tag] = append( resources[tag], &rc.Resource)
+			resources[tag] = append(resources[tag], &rc.Resource)
 		}
 
 		for _, subnet := range rc.Resource.Subnets {
-			resources[subnet] = append( resources[subnet], &rc.Resource)
+			resources[subnet] = append(resources[subnet], &rc.Resource)
 		}
 	}
 
@@ -151,7 +153,7 @@ func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state
 	// If new resource or template file changed since last run:
 	for file, rc := range newState.Templates {
 		if prevrc, exists := prevState.Templates[file]; !exists || rc.SrcFSInfo.ModTime().Sub(prevrc.SrcFSInfo.ModTime()) > 0 {
-			log.Println("Template", file, "changed:", rc.SrcFSInfo.ModTime() )
+			log.Println("Template", file, "changed:", rc.SrcFSInfo.ModTime())
 			if _, exists := resourcesToUpdate[rc]; !exists {
 				resourcesToUpdate[rc] = changes.New[string]()
 			}
@@ -223,11 +225,15 @@ func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state
 
 func main() {
 	var (
-		syslogCfg      string
-		cfg            aws.Config
-		ctx            context.Context = context.TODO()
-		runningState  *state.State = state.New()
+		syslogCfg    string
+		cfg          aws.Config
+		ctx          context.Context = context.TODO()
+		runningState *state.State    = state.New()
 	)
+
+	fmt.Println("Version:\t", build.Version)
+	fmt.Println("Build by:\t", build.User)
+	fmt.Println("Build at:\t", build.Time)
 
 	log.SetFlags(0)
 	syslogCfg = os.Getenv("SYSLOG_ADDRESS")
