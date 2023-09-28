@@ -1,8 +1,10 @@
 module github.com/AirVantage/overlord
 
-go 1.13
+go 1.21
 
 require (
-	github.com/BurntSushi/toml v0.3.1
-	github.com/aws/aws-sdk-go v1.31.9
+	github.com/BurntSushi/toml v1.3.2
+	github.com/aws/aws-sdk-go v1.45.18
 )
+
+require github.com/jmespath/go-jmespath v0.4.0 // indirect

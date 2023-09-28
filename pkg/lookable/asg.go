@@ -56,11 +56,13 @@ func (asg AutoScalingGroup) LookupIPs(ipv6 bool) ([]string, error) {
 		return output, nil
 	}
 
-	// Make a list of instance ID
-	instances := make([]*string, numInstances)
-	for i, inst := range resp2.AutoScalingGroups[0].Instances {
-		instances[i] = inst.InstanceId
-	}
+        // Make a list of healthy instance ID in the ASG
+        instances := make([]*string, numInstances)
+        for i, inst := range resp2.AutoScalingGroups[0].Instances {
+                if (*inst.HealthStatus == "Healthy" && *inst.LifecycleState == "InService") {
+                        instances[i] = inst.InstanceId
+                }
+        }
 
 	// Find running instances IP
 	params3 := &ec2.DescribeInstancesInput{

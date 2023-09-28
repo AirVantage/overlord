@@ -12,28 +12,30 @@ jobs:
     strategy:
       matrix:
         os: ['ubuntu-latest']
-        
-        go-version: [1.18.x]
-        go-arch: [ amd64 ]
+        go-arch: [ amd64, arm64 ]
         go-os: [ linux ]
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v3
         with:
-          go-version: ${{ matrix.go-version }}
-        id: go
+           go-version-file: go.mod
+
+      - id: govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+           go-version-file: go.mod
 
       - name: Build
         run: go build -o build/${{ github.event.repository.name }}-${{ matrix.go-os }}-${{ matrix.go-arch }} -v
         env:
           GOARCH: ${{ matrix.go-arch }}
           GOOS: ${{ matrix.go-os }}
-        
+
       - name: Test
         run: go test -v -cover -race -timeout 120s ./...
