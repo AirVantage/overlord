@@ -57,8 +57,6 @@ func (asg AutoScalingGroup) doLookupIPs(as ASGAPI, ec EC2API, ctx context.Contex
 	// No healthy instances
 	if len(instances) == 0 {
 		return nil, nil
-	}
-
 
 	// Find running instances IP
 	params3 := &ec2.DescribeInstancesInput{

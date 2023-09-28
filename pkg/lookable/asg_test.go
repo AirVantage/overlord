@@ -25,7 +25,9 @@ func TestLookupASG(t *testing.T) {
 		/* Single instance result */
 		{
 			client: func(t *testing.T) (ASGAPI,EC2API) {
-				instanceId := "inst-2016584701"
+				instanceId1 := "inst-2016584701"
+				instanceId2 := "inst-2016584702"
+				instanceId2 := "inst-2016584703"
 				
 				return &MockASGAPI{
 					DescribeAutoScalingGroupsMethod: func(ctx context.Context, params *autoscaling.DescribeAutoScalingGroupsInput, optFns...func(*autoscaling.Options)) (*autoscaling.DescribeAutoScalingGroupsOutput, error) {
@@ -38,7 +40,19 @@ func TestLookupASG(t *testing.T) {
 								{
 									Instances: []asgtypes.Instance{
 										{
-											InstanceId: &instanceId,
+											InstanceId: &instanceId1,
+											HealthStatus: "Healthy",
+											LifeCycleState: "InService",
+										},
+										{
+											InstanceId: &instanceId2,
+											HealthStatus: "Degraded",
+											LifeCycleState: "Pending",
+										},
+										{
+											InstanceId: &instanceId3,
+											HealthStatus: "Healthy",
+											LifeCycleState: "Terminating",
 										},
 									},
 								},
