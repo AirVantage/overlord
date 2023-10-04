@@ -25,7 +25,6 @@ func TestLookupASG(t *testing.T) {
 		/* Single instance result */
 		{
 			client: func(t *testing.T) (ASGAPI,EC2API) {
-				
 				return &MockASGAPI{
 					DescribeAutoScalingGroupsMethod: func(ctx context.Context, params *autoscaling.DescribeAutoScalingGroupsInput, optFns...func(*autoscaling.Options)) (*autoscaling.DescribeAutoScalingGroupsOutput, error) {
 						if params.Filters == nil {
@@ -70,7 +69,7 @@ func TestLookupASG(t *testing.T) {
 							t.Fatal("expect InstancesIds to not be nil")
 						}
 
-						instances := make([]ec2types.Instance, len(params.InstanceIds))
+						instances := make([]ec2types.Instance, 0, len(params.InstanceIds))
 						for _, id := range params.InstanceIds {
 							ipv4Address := "10.0.0." + id[len(id)-1:]
 							ipv6Address := "f00:ba5:10:0:0:" + id[len(id)-1:]
