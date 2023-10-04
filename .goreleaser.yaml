@@ -16,6 +16,12 @@ builds:
     goarch:
       - amd64
       - arm64
+  ldflags:
+      - -s -w -X "buildvars.Version={{.Version}}"
+      - -s -w -X "buildvars.Time={{.Now}}"
+      - -s -w -X "buildvars.User={{.Env.User}}"
+
+
   -
     id: darwin-build
     env:
@@ -25,10 +31,15 @@ builds:
     goarch:
       - amd64
       - arm64
+    ldflags:
+      - -s -w -X "buildvars.Version={{.Version}}"
+      - -s -w -X "buildvars.Time={{.Now}}"
+      - -s -w -X "buildvars.User={{.Env.User}}"
+
 archives:
   -
     id: linux-archive
-    
+
     builds:
       - linux-build
 
@@ -40,7 +51,7 @@ archives:
       - none*
   -
     id: linux-binary
-    
+
     builds:
       - linux-build
 
@@ -53,7 +64,7 @@ archives:
       - darwin-build
     format: binary
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
-      
+
 checksum:
   name_template: 'checksums.txt'
 snapshot:
