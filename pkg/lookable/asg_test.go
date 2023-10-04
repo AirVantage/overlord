@@ -25,9 +25,6 @@ func TestLookupASG(t *testing.T) {
 		/* Single instance result */
 		{
 			client: func(t *testing.T) (ASGAPI,EC2API) {
-				instanceId1 := "inst-2016584701"
-				instanceId2 := "inst-2016584702"
-				instanceId2 := "inst-2016584703"
 				
 				return &MockASGAPI{
 					DescribeAutoScalingGroupsMethod: func(ctx context.Context, params *autoscaling.DescribeAutoScalingGroupsInput, optFns...func(*autoscaling.Options)) (*autoscaling.DescribeAutoScalingGroupsOutput, error) {
@@ -40,19 +37,19 @@ func TestLookupASG(t *testing.T) {
 								{
 									Instances: []asgtypes.Instance{
 										{
-											InstanceId: &instanceId1,
-											HealthStatus: "Healthy",
-											LifeCycleState: "InService",
+											InstanceId: aws.String("inst-2016584701"),
+											HealthStatus: aws.String("Healthy"),
+											LifecycleState: asgtypes.LifecycleStateInService,
 										},
 										{
-											InstanceId: &instanceId2,
-											HealthStatus: "Degraded",
-											LifeCycleState: "Pending",
+											InstanceId: aws.String("inst-2016584702"),
+											HealthStatus: aws.String("Degraded"),
+											LifecycleState: asgtypes.LifecycleStateTerminating,
 										},
 										{
-											InstanceId: &instanceId3,
-											HealthStatus: "Healthy",
-											LifeCycleState: "Terminating",
+											InstanceId: aws.String("inst-2016584703"),
+											HealthStatus: aws.String("Healthy"),
+											LifecycleState: asgtypes.LifecycleStatePending,
 										},
 									},
 								},
@@ -73,14 +70,22 @@ func TestLookupASG(t *testing.T) {
 							t.Fatal("expect InstancesIds to not be nil")
 						}
 
+						instances := make([]ec2types.Instance, len(params.InstanceIds))
+						for _, id := range params.InstanceIds {
+							ipv4Address := "10.0.0." + id[len(id)-1:]
+							ipv6Address := "f00:ba5:10:0:0:" + id[len(id)-1:]
+							t.Log("Instance Id:"+id+" got ipv4:"+ipv4Address+" ipv6:"+ipv6Address)
+							instances = append(instances,
+								ec2types.Instance{
+									PrivateIpAddress: aws.String(ipv4Address),
+									Ipv6Address: aws.String(ipv6Address),
+								})
+						}
+
 						return &ec2.DescribeInstancesOutput{
 							Reservations: []ec2types.Reservation{
 								{
-									Instances: []ec2types.Instance{
-										{
-											PrivateIpAddress: aws.String("10.0.0.1"),
-										},
-									},
+									Instances: instances,
 								},
 							},
 							
