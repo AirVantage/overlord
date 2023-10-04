@@ -1,0 +1,5 @@
+[template]
+src = "test1.conf.tmpl"
+dest = "tests/config1/output/test1.conf"
+tags = [ "qa-nat-1", "qa-nat-2" ]
+groups = [ "qa-av-routing-asg", "qa-av-device-lw-asg", "qa-lwm2mbs-asg", "qa-mqttfe-dmz-asg" ]

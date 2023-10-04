@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"log/syslog"
@@ -9,74 +12,42 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strings"
 	"text/template"
 	"time"
 
+	"github.com/AirVantage/overlord/buildvars"
+	"github.com/AirVantage/overlord/pkg/changes"
 	"github.com/AirVantage/overlord/pkg/lookable"
+	"github.com/AirVantage/overlord/pkg/resource"
 	"github.com/AirVantage/overlord/pkg/set"
+	"github.com/AirVantage/overlord/pkg/state"
 
 	"github.com/BurntSushi/toml"
-	"github.com/aws/aws-sdk-go/aws/awserr"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/smithy-go"
 )
 
 var (
-	resourcesDirName = "/etc/overlord/resources"
-	templatesDirName = "/etc/overlord/templates"
-	stateFileName    = "/var/overlord/state.toml"
+	configRoot       = flag.String("etc", "/etc/overlord", "path to configuration directory")
+	resourcesDirName = "resources"
+	templatesDirName = "templates"
 	interval         = flag.Duration("interval", 30*time.Second, "Interval between each lookup")
 	ipv6             = flag.Bool("ipv6", false, "Look for IPv6 addresses instead of IPv4")
 )
 
-type ResourceConfig struct {
-	Resource Resource `toml:"template"`
-}
-
-type Resource struct {
-	Src       string
-	Dest      string
-	Groups    []lookable.AutoScalingGroup
-	Tags      []lookable.Tag
-	Subnets   []lookable.Subnet
-	ReloadCmd string `toml:"reload_cmd"`
-}
-
-// ResourceSet is a set of unique Resources.
-type ResourceSet map[*Resource]struct{}
-
-// Add a Resource to the set.
-func (rs ResourceSet) Add(r *Resource) {
-	rs[r] = struct{}{}
-}
-
-// Changes keeps track of added/removed IPs for a Resource.
-// We store IPs as strings to support both IPv4 and IPv6.
-type Changes struct {
-	addedIPs   set.Strings
-	removedIPs set.Strings
-}
-
-// NewChanges return a pointer to an initialized Changes struct.
-func NewChanges() *Changes {
-	return &Changes{
-		addedIPs:   set.NewStringSet(),
-		removedIPs: set.NewStringSet(),
-	}
-}
-
-// Formats an environment variable for one or more values.
-func mkEnvVar(name string, values []string) string {
-	return name + "=" + strings.Join(values, " ")
-}
-
-func iterate() {
+func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state.State {
+	var (
+		resources         map[lookable.Lookable][]*resource.Resource      = make(map[lookable.Lookable][]*resource.Resource)
+		resourcesToUpdate map[*resource.Resource]*changes.Changes[string] = make(map[*resource.Resource]*changes.Changes[string])
+		newState          *state.State                                    = state.New()
+	)
 
 	// log.Println("Start iteration")
 
-	resources := make(map[lookable.Lookable]ResourceSet)
-
 	//load resources definition files
-	resourcesDir, err := os.Open(resourcesDirName)
+	resourcesDir, err := os.Open(filepath.Join(*configRoot, resourcesDirName))
 	defer func() { resourcesDir.Close() }()
 	if err != nil {
 		log.Fatal(err)
@@ -88,116 +59,112 @@ func iterate() {
 	}
 
 	for _, resourceFile := range resourcesFiles {
-
 		if filepath.Ext(resourceFile.Name()) != ".toml" || resourceFile.IsDir() {
 			continue
 		}
 
-		var rc *ResourceConfig
-		_, err := toml.DecodeFile(filepath.Join(resourcesDirName, resourceFile.Name()), &rc)
+		var rc *resource.ResourceConfig
+		_, err := toml.DecodeFile(filepath.Join(*configRoot, resourcesDirName, resourceFile.Name()), &rc)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		// log.Println("Read File", resourceFile.Name(), ":", rc)
+		log.Println("Read File", resourceFile.Name(), ":", rc)
 
+		rc.Resource.SrcFSInfo, err = os.Stat(filepath.Join(*configRoot, templatesDirName, rc.Resource.Src))
+		if err != nil {
+			log.Fatal(err)
+		}
+		newState.Templates[rc.Resource.Src] = &rc.Resource
+
+		// Store each resource in a reverse map, listing resource linked to each lookable to easily match updates need per lookable changes
 		for _, group := range rc.Resource.Groups {
-			if resources[group] == nil {
-				resources[group] = make(ResourceSet)
-			}
-			resources[group].Add(&rc.Resource)
+			resources[group] = append(resources[group], &rc.Resource)
 		}
 
 		for _, tag := range rc.Resource.Tags {
-			if resources[tag] == nil {
-				resources[tag] = make(ResourceSet)
-			}
-			resources[tag].Add(&rc.Resource)
+			resources[tag] = append(resources[tag], &rc.Resource)
 		}
 
 		for _, subnet := range rc.Resource.Subnets {
-			if resources[subnet] == nil {
-				resources[subnet] = make(ResourceSet)
-			}
-			resources[subnet].Add(&rc.Resource)
+			resources[subnet] = append(resources[subnet], &rc.Resource)
 		}
 	}
 
-	state := make(map[string]set.Strings)
-
-	//load state file
-	err = os.MkdirAll(filepath.Dir(stateFileName), 0777)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	_, err = toml.DecodeFile(stateFileName, &state)
-	if err != nil && !os.IsNotExist(err) {
-		log.Fatal(err)
-	}
-
-	// log.Println("Load state from", stateFileName, ":", state)
-
 	// log.Println("Find Resources to update")
-
-	resourcesToUpdate := make(map[*Resource]*Changes)
-	newState := make(map[string]set.Strings)
 
 	//find group ips to update
 	for g, resourcesset := range resources {
 
 		group := g.String()
-		ips, err := g.LookupIPs(*ipv6)
+		ips, err := g.LookupIPs(ctx, cfg, *ipv6)
 
 		// if some AWS API calls failed during the IPs lookup, stop here and exit
 		// it will keep the dest file unmodified and won't execute the reload command.
 		if err != nil {
-			if awsErr, ok := err.(awserr.Error); ok {
-				log.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+			var oe *smithy.OperationError
+			if errors.As(err, &oe) {
+				log.Fatal("Failed service call processing ..: service ", oe.Service(), ", operation: ", oe.Operation(), ", error: ", oe.Unwrap())
+
+			} else {
+				log.Fatal("Error processing ..:", err.Error())
 			}
-			log.Fatal("AWS Error:", err.Error())
 		}
 
-		newState[group] = set.NewStringSet()
-		changes := NewChanges()
+		newState.Ipsets[group] = set.New[string]()
+		changes := changes.New[string]()
 		changed := false
 
-		if _, exists := state[group]; !exists {
-			state[group] = set.NewStringSet()
+		if _, exists := prevState.Ipsets[group]; !exists {
+			prevState.Ipsets[group] = set.New[string]()
 		}
 
 		for _, ip := range ips {
-			newState[group].Add(ip)
-			if !state[group].Has(ip) {
+			newState.Ipsets[group].Add(ip)
+			if !prevState.Ipsets[group].Has(ip) {
 				changed = true
-				changes.addedIPs.Add(ip)
+				changes.Add(ip)
 				log.Println("For group", group, "new IP:", ip)
 			}
-
 		}
 
-		for _, oldIP := range state[group].ToSlice() {
-			if !newState[group].Has(oldIP) {
+		for _, oldIP := range prevState.Ipsets[group].ToSlice() {
+			if !newState.Ipsets[group].Has(oldIP) {
 				changed = true
-				changes.removedIPs.Add(oldIP)
+				changes.Remove(oldIP)
 				log.Println("For group", group, "deprecated IP:", oldIP)
 			}
 		}
 
 		if changed {
-			for resource := range resourcesset {
+			for _, resource := range resourcesset {
 				log.Println("For group", group, "update ressource:", resource)
-				resourcesToUpdate[resource] = changes
+
+				// Merge Changes to store IP changes across differents aws resources:
+				if prevChanges, exists := resourcesToUpdate[resource]; exists {
+					resourcesToUpdate[resource] = prevChanges.Merge(changes)
+				} else {
+					resourcesToUpdate[resource] = changes
+				}
 			}
 		}
-
 	}
 
-	//make list of ips
+	// If new resource or template file changed since last run:
+	for file, rc := range newState.Templates {
+		if prevrc, exists := prevState.Templates[file]; !exists || rc.SrcFSInfo.ModTime().Sub(prevrc.SrcFSInfo.ModTime()) > 0 {
+			log.Println("Template", file, "changed:", rc.SrcFSInfo.ModTime())
+			if _, exists := resourcesToUpdate[rc]; !exists {
+				resourcesToUpdate[rc] = changes.New[string]()
+			}
+		}
+	}
+
+	// Convert set to sorted array for use with text/template
 	ips := make(map[string][]string)
-	for group, ipsSet := range newState {
-		ipsList := make([]string, 0, len(ipsSet))
-		for ip := range ipsSet {
+	for group, ipsSet := range newState.Ipsets {
+		ipsList := make([]string, 0, len(*ipsSet))
+		for ip := range *ipsSet {
 			ipsList = append(ipsList, ip)
 		}
 		sort.Strings(ipsList)
@@ -207,8 +174,7 @@ func iterate() {
 	// log.Println("Update resources and restart processes")
 	//generate resources
 	for resource, changes := range resourcesToUpdate {
-
-		tmpl, err := template.ParseFiles(filepath.Join(templatesDirName, resource.Src))
+		tmpl, err := template.ParseFiles(filepath.Join(*configRoot, templatesDirName, resource.Src))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -236,7 +202,7 @@ func iterate() {
 		//cmd := exec.Command(cmdSplit[0], cmdSplit[1:]...)
 		cmd := exec.Command("bash", "-c", resource.ReloadCmd)
 		if changes != nil {
-			cmd.Env = append(os.Environ(), mkEnvVar("IP_ADDED", changes.addedIPs.ToSlice()), mkEnvVar("IP_REMOVED", changes.removedIPs.ToSlice()))
+			cmd.Env = append(os.Environ(), mkEnvVar("IP_ADDED", changes.Added()), mkEnvVar("IP_REMOVED", changes.Removed()))
 		}
 		log.Println(cmd)
 		err = cmd.Start()
@@ -250,28 +216,27 @@ func iterate() {
 		} else {
 			log.Println("For resource", resource, "reload cmd", resource.ReloadCmd, "finished successfuly")
 		}
-
 	}
 
-	//write state file
-	stateFile, err := os.Create(stateFileName)
-	defer func() { stateFile.Close() }()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err = toml.NewEncoder(stateFile).Encode(&newState); err != nil {
-		log.Fatal("Error writing state file:", stateFileName, ":", err)
-	}
-	state = newState
-	// log.Println("Log state", state, "in file", stateFileName)
-
+	// log.Println("Log state", state)
 	// log.Println("Iteration done")
-
+	return newState
 }
 
 func main() {
+	var (
+		syslogCfg    string
+		cfg          aws.Config
+		ctx          context.Context = context.TODO()
+		runningState *state.State    = state.New()
+	)
+
+	fmt.Println("Version:\t",  buildvars.Version)
+	fmt.Println("Build by:\t", buildvars.User)
+	fmt.Println("Build at:\t", buildvars.Time)
+
 	log.SetFlags(0)
-	var syslogCfg = os.Getenv("SYSLOG_ADDRESS")
+	syslogCfg = os.Getenv("SYSLOG_ADDRESS")
 	if len(syslogCfg) > 0 {
 		syslogWriter, err := syslog.Dial("udp", syslogCfg, syslog.LOG_INFO, "av-balancing")
 		if err != nil {
@@ -282,20 +247,17 @@ func main() {
 			log.SetOutput(io.MultiWriter(os.Stdout, syslogWriter))
 		}
 	}
+
+	// Initialise AWS SDK v2, process default configuration
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	flag.Parse()
 
-	// Remove the old and possibly incompatible state file.
-	os.Remove(stateFileName)
-
 	for {
-		iterate()
+		runningState = iterate(ctx, cfg, runningState)
 		time.Sleep(*interval)
 	}
 }
-
-// func main() {
-// 	for {
-// 		log.Println(lookupIPs("qa-site-survey-instance"))
-// 		time.Sleep(time.Duration(30)*time.Second)
-// 	}
-// }

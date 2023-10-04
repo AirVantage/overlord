@@ -1,0 +1,26 @@
+{{$state := .}}
+{{range index $state "qa-nat-1"}}
+  IP qa-nat-1: {{.}}
+
+  {{range index $state "qa-nat-2"}}
+    IP qa-nat-2: {{.}}
+  {{end}}
+
+  Still qa-nat-1: {{.}}
+{{end}}
+
+{{range index $state "qa-av-routing-asg"}}
+  qa_av_routing-asg {{.}}
+{{end}}
+
+{{range index $state "qa-lwm2mbs-asg"}}
+  qa_lwm2mbs-asg {{.}}
+{{end}}
+
+{{range index $state "qa-av-device-lw-asg"}}
+  qa_av_device_lw_asg {{.}}
+{{end}}
+
+{{range index $state "qa-mqttfe-dmz-asg"}}
+  qa_mqttfe_dmz_asg {{.}}
+{{end}}
