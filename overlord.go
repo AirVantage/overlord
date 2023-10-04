@@ -15,7 +15,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/AirVantage/overlord/build"
+	"github.com/AirVantage/overlord/buildvars"
 	"github.com/AirVantage/overlord/pkg/changes"
 	"github.com/AirVantage/overlord/pkg/lookable"
 	"github.com/AirVantage/overlord/pkg/resource"
@@ -231,9 +231,9 @@ func main() {
 		runningState *state.State    = state.New()
 	)
 
-	fmt.Println("Version:\t", build.Version)
-	fmt.Println("Build by:\t", build.User)
-	fmt.Println("Build at:\t", build.Time)
+	fmt.Println("Version:\t",  buildvars.Version)
+	fmt.Println("Build by:\t", buildvars.User)
+	fmt.Println("Build at:\t", buildvars.Time)
 
 	log.SetFlags(0)
 	syslogCfg = os.Getenv("SYSLOG_ADDRESS")
