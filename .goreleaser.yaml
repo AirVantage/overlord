@@ -34,8 +34,6 @@ archives:
 
     format: tar.gz
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
-    replacements:
-      arm64: aarch64
 
     # Don't include README:
     files:
