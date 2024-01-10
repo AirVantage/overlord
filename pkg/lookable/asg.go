@@ -49,14 +49,16 @@ func (asg AutoScalingGroup) doLookupIPs(as ASGAPI, ec EC2API, ctx context.Contex
         // Make a list of healthy instance ID in the ASG
         instances := make([]string, 0, numInstances)
         for _, inst := range resp2.AutoScalingGroups[0].Instances {
+		//log.Println("Got instance Id:"+*inst.InstanceId+" health:"+*inst.HealthStatus+" LifeCycle:"+string(inst.LifecycleState))
                 if (*inst.HealthStatus == "Healthy" && inst.LifecycleState == asgtypes.LifecycleStateInService) {
+			//log.Println("added")
                         instances = append(instances, *inst.InstanceId)
                 }
         }
 
 	// No healthy instances
 	if len(instances) == 0 {
-		return nil, nil
+		return output, nil
 	}
 	
 	// Find running instances IP
