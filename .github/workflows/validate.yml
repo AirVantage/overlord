@@ -27,7 +27,7 @@ jobs:
             go-version-file: go.mod
 
       - name: Build
-        run: go build -o build/${{ github.event.repository.name }}-${{ matrix.go-os }}-${{ matrix.go-arch }} -v cmd/overlord/main.go
+        run: go build -o build/${{ github.event.repository.name }}-${{ matrix.go-os }}-${{ matrix.go-arch }} -v ./cmd/overlord/
         env:
           GOARCH: ${{ matrix.go-arch }}
           GOOS: ${{ matrix.go-os }}

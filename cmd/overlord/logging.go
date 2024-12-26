@@ -9,7 +9,7 @@ import (
 	slogsyslog "github.com/samber/slog-syslog/v2"
 )
 
-func initLog() {
+func InitLog() {
 	var (
 		syslogCfg string
 	)
@@ -30,7 +30,7 @@ func initLog() {
 	if len(syslogCfg) > 0 {
 		writer, err := net.Dial("udp", syslogCfg)
 		if err != nil {
-			slog.Warn("cannot send logs to syslog:", err)
+			slog.Warn("Unable to establish UDP session, cannot send logs to syslog", "error", err)
 		} else {
 			handler := slogsyslog.Option{Level: loggerLevel, Writer: writer}.NewSyslogHandler()
 			slog.SetDefault(slog.New(handler))

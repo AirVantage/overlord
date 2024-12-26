@@ -32,7 +32,7 @@ func main() {
 	)
 
 	flag.Parse()
-	initLog()
+	InitLog()
 
 	slog.Info("overlord starting", "version", Version, "user", User, "date", Time)
 
@@ -45,7 +45,7 @@ func main() {
 
 	// Main loop
 	for {
-		runningState, err = iterate(ctx, cfg, runningState)
+		runningState, err = Iterate(ctx, cfg, runningState)
 		if err != nil {
 			var oe *smithy.OperationError
 			var ae smithy.APIError

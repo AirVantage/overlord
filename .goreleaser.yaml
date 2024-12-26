@@ -9,7 +9,7 @@ before:
 builds:
   -
     id: default
-    main: ./cmd/overlord/main.go
+    main: ./cmd/overlord
     env:
       - CGO_ENABLED=0
     goos:

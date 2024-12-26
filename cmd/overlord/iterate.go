@@ -19,7 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
-func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*state.State, error) {
+func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*state.State, error) {
 	var (
 		resources         map[lookable.Lookable][]*resource.Resource      = make(map[lookable.Lookable][]*resource.Resource)
 		resourcesToUpdate map[*resource.Resource]*changes.Changes[string] = make(map[*resource.Resource]*changes.Changes[string])
