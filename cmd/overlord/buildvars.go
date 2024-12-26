@@ -1,4 +1,4 @@
-package buildvars
+package main
 
 var Time string
 var User string

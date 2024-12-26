@@ -2,60 +2,42 @@ package main
 
 import (
 	"context"
-	"errors"
-	"flag"
-	"fmt"
-	"io"
+	"html/template"
 	"log"
-	"log/syslog"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"text/template"
-	"time"
 
-	"github.com/AirVantage/overlord/buildvars"
 	"github.com/AirVantage/overlord/pkg/changes"
 	"github.com/AirVantage/overlord/pkg/lookable"
 	"github.com/AirVantage/overlord/pkg/resource"
 	"github.com/AirVantage/overlord/pkg/set"
 	"github.com/AirVantage/overlord/pkg/state"
-
 	"github.com/BurntSushi/toml"
-
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/smithy-go"
 )
 
-var (
-	configRoot       = flag.String("etc", "/etc/overlord", "path to configuration directory")
-	resourcesDirName = "resources"
-	templatesDirName = "templates"
-	interval         = flag.Duration("interval", 30*time.Second, "Interval between each lookup")
-	ipv6             = flag.Bool("ipv6", false, "Look for IPv6 addresses instead of IPv4")
-)
-
-func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state.State {
+func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*state.State, error) {
 	var (
 		resources         map[lookable.Lookable][]*resource.Resource      = make(map[lookable.Lookable][]*resource.Resource)
 		resourcesToUpdate map[*resource.Resource]*changes.Changes[string] = make(map[*resource.Resource]*changes.Changes[string])
 		newState          *state.State                                    = state.New()
 	)
 
-	// log.Println("Start iteration")
+	slog.Debug("Start iteration")
 
-	//load resources definition files
+	// load resources definition files
 	resourcesDir, err := os.Open(filepath.Join(*configRoot, resourcesDirName))
 	defer func() { resourcesDir.Close() }()
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	resourcesFiles, err := resourcesDir.Readdir(0)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	for _, resourceFile := range resourcesFiles {
@@ -66,14 +48,14 @@ func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state
 		var rc *resource.ResourceConfig
 		_, err := toml.DecodeFile(filepath.Join(*configRoot, resourcesDirName, resourceFile.Name()), &rc)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 
-		log.Println("Read File", resourceFile.Name(), ":", rc)
+		slog.Debug("Reading resource file", "filename", resourceFile.Name(), "config", rc)
 
 		rc.Resource.SrcFSInfo, err = os.Stat(filepath.Join(*configRoot, templatesDirName, rc.Resource.Src))
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 		newState.Templates[rc.Resource.Src] = &rc.Resource
 
@@ -91,9 +73,8 @@ func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state
 		}
 	}
 
-	// log.Println("Find Resources to update")
-
-	//find group ips to update
+	// find group ips to update
+	slog.Debug("Find Resources to update")
 	for g, resourcesset := range resources {
 
 		group := g.String()
@@ -102,13 +83,7 @@ func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state
 		// if some AWS API calls failed during the IPs lookup, stop here and exit
 		// it will keep the dest file unmodified and won't execute the reload command.
 		if err != nil {
-			var oe *smithy.OperationError
-			if errors.As(err, &oe) {
-				log.Fatal("Failed service call processing ..: service ", oe.Service(), ", operation: ", oe.Operation(), ", error: ", oe.Unwrap())
-
-			} else {
-				log.Fatal("Error processing ..:", err.Error())
-			}
+			return nil, err
 		}
 
 		newState.Ipsets[group] = set.New[string]()
@@ -153,7 +128,7 @@ func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state
 	// If new resource or template file changed since last run:
 	for file, rc := range newState.Templates {
 		if prevrc, exists := prevState.Templates[file]; !exists || rc.SrcFSInfo.ModTime().Sub(prevrc.SrcFSInfo.ModTime()) > 0 {
-			log.Println("Template", file, "changed:", rc.SrcFSInfo.ModTime())
+			slog.Info("Template changed", "template", file, "mod time", rc.SrcFSInfo.ModTime())
 			if _, exists := resourcesToUpdate[rc]; !exists {
 				resourcesToUpdate[rc] = changes.New[string]()
 			}
@@ -171,93 +146,55 @@ func iterate(ctx context.Context, cfg aws.Config, prevState *state.State) *state
 		ips[group] = ipsList
 	}
 
-	// log.Println("Update resources and restart processes")
-	//generate resources
+	// generate resources
+	slog.Debug("Update resources and restart processes")
 	for resource, changes := range resourcesToUpdate {
 		tmpl, err := template.ParseFiles(filepath.Join(*configRoot, templatesDirName, resource.Src))
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
+
 		}
 		err = os.MkdirAll(filepath.Dir(resource.Dest), 0777)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 		// create the dest file and truncate it if it already exists
 		destFile, err := os.Create(resource.Dest)
 		defer func() { destFile.Close() }()
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
+
 		}
 		err = tmpl.Execute(destFile, ips)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
-		log.Println("For resource", resource, "update file", resource.Dest)
+
+		slog.Info("Updating resource file from template", "resource", resource, "output", resource.Dest, "template", resource.Src)
 
 		if resource.ReloadCmd == "" {
 			continue
 		}
 
-		//cmdSplit := strings.Fields(resource.ReloadCmd)
-		//cmd := exec.Command(cmdSplit[0], cmdSplit[1:]...)
 		cmd := exec.Command("bash", "-c", resource.ReloadCmd)
 		if changes != nil {
 			cmd.Env = append(os.Environ(), mkEnvVar("IP_ADDED", changes.Added()), mkEnvVar("IP_REMOVED", changes.Removed()))
 		}
-		log.Println(cmd)
+
+		slog.Debug("Executing reload command", "resource", resource, "command", cmd)
 		err = cmd.Start()
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 		log.Println("For resource", resource, "start reload cmd", resource.ReloadCmd)
 		err = cmd.Wait()
 		if err != nil {
-			log.Println("For resource", resource, "reload cmd", resource.ReloadCmd, "finished with error", err)
+			slog.Error("Resource reload command finished with error", "resourec", resource, "reload cmd", resource.ReloadCmd, "error", err)
 		} else {
-			log.Println("For resource", resource, "reload cmd", resource.ReloadCmd, "finished successfuly")
+			slog.Info("Resource reload command successfull", "resourec", resource, "reload cmd", resource.ReloadCmd)
 		}
 	}
 
-	// log.Println("Log state", state)
-	// log.Println("Iteration done")
-	return newState
-}
-
-func main() {
-	var (
-		syslogCfg    string
-		cfg          aws.Config
-		ctx          context.Context = context.TODO()
-		runningState *state.State    = state.New()
-	)
-
-	fmt.Println("Version:\t",  buildvars.Version)
-	fmt.Println("Build by:\t", buildvars.User)
-	fmt.Println("Build at:\t", buildvars.Time)
-
-	log.SetFlags(0)
-	syslogCfg = os.Getenv("SYSLOG_ADDRESS")
-	if len(syslogCfg) > 0 {
-		syslogWriter, err := syslog.Dial("udp", syslogCfg, syslog.LOG_INFO, "av-balancing")
-		if err != nil {
-			// Do not make this error fatal. A syslog server may
-			// not be available when deploying to a new region.
-			log.Println("warning: cannot send logs to syslog:", err)
-		} else {
-			log.SetOutput(io.MultiWriter(os.Stdout, syslogWriter))
-		}
-	}
-
-	// Initialise AWS SDK v2, process default configuration
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	flag.Parse()
-
-	for {
-		runningState = iterate(ctx, cfg, runningState)
-		time.Sleep(*interval)
-	}
+	slog.Debug("Iteration done", "state", newState)
+	return newState, nil
 }

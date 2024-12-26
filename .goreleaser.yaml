@@ -1,5 +1,5 @@
-# An adapted .goreleaser.yml file with packaging tweaked to meet internal needs
-# Make sure to check the documentation at https://goreleaser.com
+project_name: overlord
+
 before:
   hooks:
     # You may remove this if you don't use go modules.
@@ -8,40 +8,24 @@ before:
     - go generate ./...
 builds:
   -
-    id: linux-build
+    id: default
+    main: ./cmd/overlord/main.go
     env:
       - CGO_ENABLED=0
     goos:
       - linux
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w -X "buildvars.Version={{.Version}}"
-      - -s -w -X "buildvars.Time={{.Now}}"
-      - -s -w -X "buildvars.User={{.Env.User}}"
-
-
-  -
-    id: darwin-build
-    env:
-      - CGO_ENABLED=0
-    goos:
       - darwin
     goarch:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X "buildvars.Version={{.Version}}"
-      - -s -w -X "buildvars.Time={{.Now}}"
-      - -s -w -X "buildvars.User={{.Env.User}}"
+      - "-s -w -X main.version={{.Version}} -X main.Time={{.Now}} -X main.User={{.Env.User}}"
 
 archives:
   -
-    id: linux-archive
-
+    id: archive
     builds:
-      - linux-build
+      - default
 
     format: tar.gz
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
@@ -50,18 +34,10 @@ archives:
     files:
       - none*
   -
-    id: linux-binary
-
+    id: binary
     builds:
-      - linux-build
+      - default
 
-    format: binary
-    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
-
-  -
-    id: darwin-binary
-    builds:
-      - darwin-build
     format: binary
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
 

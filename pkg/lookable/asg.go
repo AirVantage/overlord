@@ -5,10 +5,10 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/autoscaling"
 	asgtypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
 // AutoScalingGroup is a Lookable ASG tag name.
@@ -46,21 +46,21 @@ func (asg AutoScalingGroup) doLookupIPs(as ASGAPI, ec EC2API, ctx context.Contex
 		return output, nil
 	}
 
-        // Make a list of healthy instance ID in the ASG
-        instances := make([]string, 0, numInstances)
-        for _, inst := range resp2.AutoScalingGroups[0].Instances {
-		//log.Println("Got instance Id:"+*inst.InstanceId+" health:"+*inst.HealthStatus+" LifeCycle:"+string(inst.LifecycleState))
-                if (*inst.HealthStatus == "Healthy" && inst.LifecycleState == asgtypes.LifecycleStateInService) {
-			//log.Println("added")
-                        instances = append(instances, *inst.InstanceId)
-                }
-        }
+	// Make a list of healthy instance ID in the ASG
+	instances := make([]string, 0, numInstances)
+	for _, inst := range resp2.AutoScalingGroups[0].Instances {
+		// log.Println("Got instance Id:"+*inst.InstanceId+" health:"+*inst.HealthStatus+" LifeCycle:"+string(inst.LifecycleState))
+		if *inst.HealthStatus == "Healthy" && inst.LifecycleState == asgtypes.LifecycleStateInService {
+			// log.Println("added")
+			instances = append(instances, *inst.InstanceId)
+		}
+	}
 
 	// No healthy instances
 	if len(instances) == 0 {
 		return output, nil
 	}
-	
+
 	// Find running instances IP
 	params3 := &ec2.DescribeInstancesInput{
 		InstanceIds: instances,
