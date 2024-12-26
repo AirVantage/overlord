@@ -28,7 +28,6 @@ func initLog() {
 
 	syslogCfg = os.Getenv("SYSLOG_ADDRESS")
 	if len(syslogCfg) > 0 {
-		// ncat -u -l 9999 -k
 		writer, err := net.Dial("udp", syslogCfg)
 		if err != nil {
 			slog.Warn("cannot send logs to syslog:", err)
