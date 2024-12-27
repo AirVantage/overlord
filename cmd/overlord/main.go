@@ -34,7 +34,7 @@ func main() {
 	flag.Parse()
 	InitLog()
 
-	slog.Info("overlord starting", "version", Version, "user", User, "date", Time)
+	slog.Info("overlord starting", "version", Version, "commit", Commit, "date", Time)
 
 	// Initialise AWS SDK v2, process default configuration
 	cfg, err = config.LoadDefaultConfig(ctx)

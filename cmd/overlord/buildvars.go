@@ -2,6 +2,6 @@ package main
 
 var (
 	Time    string = "unknown"
-	User    string = "unknown"
+	Commit  string = "unknown"
 	Version string = "dev"
 )
