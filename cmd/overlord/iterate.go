@@ -189,9 +189,9 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 		log.Println("For resource", resource, "start reload cmd", resource.ReloadCmd)
 		err = cmd.Wait()
 		if err != nil {
-			slog.Error("Resource reload command finished with error", "resourec", resource, "reload cmd", resource.ReloadCmd, "error", err)
+			slog.Warn("Resource reload command finished with error", "resource", resource, "reload cmd", resource.ReloadCmd, "error", err)
 		} else {
-			slog.Info("Resource reload command successfull", "resourec", resource, "reload cmd", resource.ReloadCmd)
+			slog.Info("Resource reload command successfull", "resource", resource, "reload cmd", resource.ReloadCmd)
 		}
 	}
 
