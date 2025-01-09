@@ -5,6 +5,8 @@ name: Build validation and Unit Testing
 
 on: [pull_request, workflow_dispatch]
 
+permissions: read-all
+
 jobs:
   validate:
     name: Testing build
@@ -50,7 +52,7 @@ jobs:
             go-version-file: go.mod
 
       - id: govulncheck
-        uses: golang/govulncheck-action@v1.0.1
+        uses: golang/govulncheck-action@v1
         with:
             go-version-file: go.mod
             repo-checkout: false
