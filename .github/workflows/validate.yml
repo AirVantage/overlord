@@ -5,6 +5,8 @@ name: Build validation and Unit Testing
 
 on: [pull_request, workflow_dispatch]
 
+permissions: read-all
+
 jobs:
   validate:
     name: Testing build
@@ -24,19 +26,51 @@ jobs:
       - name: Set up Go 1.x
         uses: actions/setup-go@v4
         with:
-           go-version-file: go.mod
-
-      - id: govulncheck
-        uses: golang/govulncheck-action@v1.0.1
-        with:
-           go-version-file: go.mod
-           repo-checkout: false
+            go-version-file: go.mod
 
       - name: Build
-        run: go build -o build/${{ github.event.repository.name }}-${{ matrix.go-os }}-${{ matrix.go-arch }} -v
+        run: go build -o build/${{ github.event.repository.name }}-${{ matrix.go-os }}-${{ matrix.go-arch }} -v ./cmd/overlord
         env:
           GOARCH: ${{ matrix.go-arch }}
           GOOS: ${{ matrix.go-os }}
 
       - name: Test
         run: go test -v -cover -race -timeout 120s ./...
+
+  security:
+    name: Vulnerability checks
+
+    runs-on: 'ubuntu-latest'
+
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v4
+        with:
+            go-version-file: go.mod
+
+      - id: govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+            go-version-file: go.mod
+            repo-checkout: false
+
+  critics:
+    name: Quality check
+    runs-on: 'ubuntu-latest'
+
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - shell: bash
+        run: |
+          go install -v github.com/go-critic/go-critic/cmd/gocritic@latest
+          gocritic check ./...

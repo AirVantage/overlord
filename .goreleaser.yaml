@@ -1,5 +1,6 @@
-# An adapted .goreleaser.yml file with packaging tweaked to meet internal needs
-# Make sure to check the documentation at https://goreleaser.com
+project_name: overlord
+version: 2
+
 before:
   hooks:
     # You may remove this if you don't use go modules.
@@ -8,29 +9,28 @@ before:
     - go generate ./...
 builds:
   -
-    id: linux-build
+    id: default
+    main: ./cmd/overlord
     env:
       - CGO_ENABLED=0
     goos:
       - linux
-    goarch:
-      - amd64
-      - arm64
-  -
-    id: darwin-build
-    env:
-      - CGO_ENABLED=0
-    goos:
       - darwin
     goarch:
       - amd64
       - arm64
+    ldflags:
+      - -s
+      - -w
+      - -X "main.Version={{ .Version }}"
+      - -X "main.Time={{ .Date }}"
+      - -X "main.Commit={{ .Commit }}"
+
 archives:
   -
-    id: linux-archive
-    
+    id: archive
     builds:
-      - linux-build
+      - default
 
     format: tar.gz
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
@@ -39,25 +39,17 @@ archives:
     files:
       - none*
   -
-    id: linux-binary
-    
+    id: binary
     builds:
-      - linux-build
+      - default
 
     format: binary
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
 
-  -
-    id: darwin-binary
-    builds:
-      - darwin-build
-    format: binary
-    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
-      
 checksum:
   name_template: 'checksums.txt'
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 changelog:
   sort: asc
   filters:

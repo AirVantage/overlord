@@ -1,6 +1,7 @@
 # Temporary files
 *~
 .*~
+\#*\#
 
 # Binaries for programs and plugins
 *.exe
@@ -23,7 +24,7 @@ dist/
 build/
 
 # Local build
-overlord
-overlord-darwin-amd64
-overlord-linux-amd64
-overlord-windows-386
+./overlord
+./overlord-darwin-amd64
+./overlord-linux-amd64
+./overlord-windows-386
