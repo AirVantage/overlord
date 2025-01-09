@@ -1,4 +1,5 @@
 package resource
+
 // Configuration file structure
 
 import (
@@ -6,7 +7,6 @@ import (
 
 	"github.com/AirVantage/overlord/pkg/lookable"
 )
-
 
 type ResourceConfig struct {
 	Resource Resource `toml:"template"`

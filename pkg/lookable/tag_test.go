@@ -1,22 +1,22 @@
 package lookable
 
 import (
-	"testing"
 	"context"
+	"testing"
 
 	"strconv"
-	
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
 func TestTagLookupIPs(t *testing.T) {
-	
+
 	cases := []struct {
 		client func(t *testing.T) EC2API
-		tag Tag
-		ipv6 bool
+		tag    Tag
+		ipv6   bool
 		expect []string
 	}{
 		/* Single instance result */
@@ -38,13 +38,12 @@ func TestTagLookupIPs(t *testing.T) {
 									},
 								},
 							},
-							
 						}, nil
 					},
 				}
-				
+
 			},
-			tag: "mon-tag",
+			tag:  "mon-tag",
 			ipv6: false,
 
 			expect: []string{"10.0.0.1"},
@@ -75,16 +74,15 @@ func TestTagLookupIPs(t *testing.T) {
 									},
 								},
 							},
-							
 						}, nil
 					},
 				}
-				
+
 			},
-			tag: "mon-tag",
+			tag:  "mon-tag",
 			ipv6: false,
 
-			expect: []string{"10.0.0.1","10.0.0.2"},
+			expect: []string{"10.0.0.1", "10.0.0.2"},
 		},
 		/* IPv6 results */
 		{
@@ -105,13 +103,12 @@ func TestTagLookupIPs(t *testing.T) {
 									},
 								},
 							},
-							
 						}, nil
 					},
 				}
-				
+
 			},
-			tag: "mon-tag",
+			tag:  "mon-tag",
 			ipv6: true,
 
 			expect: []string{"2001:db8:51e5:5a::1"},
@@ -122,17 +119,18 @@ func TestTagLookupIPs(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			ctx := context.TODO()
 
-			content, err := tt.tag.doLookupIPs(tt.client(t), ctx, tt.ipv6 )
+			content, err := tt.tag.doLookupIPs(tt.client(t), ctx, tt.ipv6)
 			if err != nil {
 				t.Fatalf("expect no error, got %v", err)
 			}
-			if !Equal(tt.expect,content) {
+			if !Equal(tt.expect, content) {
 				t.Errorf("expect %v, got %v", tt.expect, content)
 			}
 		})
 	}
-	
+
 }
+
 /*
 
-*/
+ */

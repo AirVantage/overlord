@@ -1,4 +1,5 @@
 package set
+
 // Generic set data structure
 
 // Strings is a set of unique strings.
@@ -25,7 +26,7 @@ func (ss Set[T]) Has(s T) bool {
 
 // ToSlice returns a copy the set as a slice of strings.
 func (ss Set[T]) ToSlice() []T {
-	// Allocate a large enough slice 
+	// Allocate a large enough slice
 	slice := make([]T, 0, len(ss))
 
 	for key, _ := range ss {

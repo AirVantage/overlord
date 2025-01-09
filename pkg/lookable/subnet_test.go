@@ -1,22 +1,22 @@
 package lookable
 
 import (
-	"testing"
 	"context"
+	"testing"
 
 	"strconv"
-	
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
-func  TestLookupSubnet(t *testing.T) {
-	
+func TestLookupSubnet(t *testing.T) {
+
 	cases := []struct {
 		client func(t *testing.T) EC2API
 		subnet Subnet
-		ipv6 bool
+		ipv6   bool
 		expect []string
 	}{
 		/* Single instance result */
@@ -35,14 +35,13 @@ func  TestLookupSubnet(t *testing.T) {
 									SubnetId: &subnetId,
 								},
 							},
-							
 						}, nil
 					},
 					DescribeInstancesMethod: func(ctx context.Context, params *ec2.DescribeInstancesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
 						if params.Filters == nil {
 							t.Fatal("expect filters to not be nil")
 						}
-						if e,a := "subnet-id", subnetId; !HasEC2Filter(params.Filters, e, a) {
+						if e, a := "subnet-id", subnetId; !HasEC2Filter(params.Filters, e, a) {
 							t.Errorf("no filters matching %v=%v", e, a)
 						}
 
@@ -56,13 +55,12 @@ func  TestLookupSubnet(t *testing.T) {
 									},
 								},
 							},
-							
 						}, nil
 					},
-				}				
+				}
 			},
 			subnet: "mon-tag",
-			ipv6: false,
+			ipv6:   false,
 
 			expect: []string{"10.0.0.1"},
 		},
@@ -72,14 +70,14 @@ func  TestLookupSubnet(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			ctx := context.TODO()
 
-			content, err := tt.subnet.doLookupIPs(tt.client(t), ctx, tt.ipv6 )
+			content, err := tt.subnet.doLookupIPs(tt.client(t), ctx, tt.ipv6)
 			if err != nil {
 				t.Fatalf("expect no error, got %v", err)
 			}
-			if !Equal(tt.expect,content) {
+			if !Equal(tt.expect, content) {
 				t.Errorf("expect %v, got %v", tt.expect, content)
 			}
 		})
 	}
-	
+
 }

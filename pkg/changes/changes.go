@@ -19,25 +19,24 @@ func New[T comparable]() *Changes[T] {
 	}
 }
 
-
 // Log changes
-func (c *Changes[T])Add(add T) {
+func (c *Changes[T]) Add(add T) {
 	c.addedIPs.Add(add)
 }
-func (c *Changes[T])Remove(rem T) {
+func (c *Changes[T]) Remove(rem T) {
 	c.removedIPs.Add(rem)
 }
 
 // Return changes as slice
-func (c *Changes[T])Added() []T {
+func (c *Changes[T]) Added() []T {
 	return c.addedIPs.ToSlice()
 }
-func (c *Changes[T])Removed() []T {
+func (c *Changes[T]) Removed() []T {
 	return c.removedIPs.ToSlice()
 }
 
 // Return a deep copy of current object
-func (c *Changes[T])Copy() *Changes[T] {
+func (c *Changes[T]) Copy() *Changes[T] {
 	var copy *Changes[T] = New[T]()
 
 	for _, added := range c.addedIPs.ToSlice() {
@@ -50,7 +49,7 @@ func (c *Changes[T])Copy() *Changes[T] {
 }
 
 // NewChanges return a pointer to an initialized Changes struct.
-func (c *Changes[T])Merge(m *Changes[T]) *Changes[T] {
+func (c *Changes[T]) Merge(m *Changes[T]) *Changes[T] {
 	var merged *Changes[T] = c.Copy()
 
 	for _, added := range m.addedIPs.ToSlice() {
