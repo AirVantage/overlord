@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.198.1
 	github.com/aws/smithy-go v1.22.2
 	github.com/dusted-go/logging v1.3.0
-	github.com/samber/slog-syslog/v2 v2.5.1
+	github.com/samber/slog-syslog/v2 v2.5.2
 )
 
 require (
@@ -24,11 +24,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.24.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.14 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.14 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/samber/lo v1.47.0 // indirect
-	github.com/samber/slog-common v0.18.0 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/samber/slog-common v0.18.1 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
