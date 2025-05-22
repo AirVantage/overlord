@@ -19,6 +19,9 @@ func customConverter(addSource bool, replaceAttr func(groups []string, a slog.At
 	delete(attrs, "logger.name")
 	delete(attrs, "logger.version")
 
+	// Convert timestamp to ISO 8601 format for loggly
+	attrs["timestamp"] = record.Time.UTC().Format("2006-01-02T15:04:05.999Z07:00")
+
 	return attrs
 }
 
