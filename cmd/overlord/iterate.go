@@ -188,13 +188,13 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 		}
 
 		// Find and log the IP_ADDED and IP_REMOVED environment variables
-		ipAdded := "IP_ADDED="
-		ipRemoved := "IP_REMOVED="
+		ipAdded := ""
+		ipRemoved := ""
 		for _, env := range cmd.Env {
 			if strings.HasPrefix(env, "IP_ADDED=") {
-				ipAdded = env
+				ipAdded = strings.TrimPrefix(env, "IP_ADDED=")
 			} else if strings.HasPrefix(env, "IP_REMOVED=") {
-				ipRemoved = env
+				ipRemoved = strings.TrimPrefix(env, "IP_REMOVED=")
 			}
 		}
 		slog.Info("start reload cmd", "resource", resource, "ipAdded", ipAdded, "ipRemoved", ipRemoved)
