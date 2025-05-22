@@ -2,13 +2,25 @@ package main
 
 import (
 	"log/slog"
-	"net"
+	"log/syslog"
 	"os"
 
 	"github.com/dusted-go/logging/prettylog"
 	slogmulti "github.com/samber/slog-multi"
 	slogsyslog "github.com/samber/slog-syslog/v2"
 )
+
+// customConverter removes logger.name and logger.version from syslog output
+func customConverter(addSource bool, replaceAttr func(groups []string, a slog.Attr) slog.Attr, loggerAttr []slog.Attr, groups []string, record *slog.Record) map[string]any {
+	// Get the default conversion
+	attrs := slogsyslog.DefaultConverter(addSource, replaceAttr, loggerAttr, groups, record)
+
+	// Remove logger_name and logger_version
+	delete(attrs, "logger.name")
+	delete(attrs, "logger.version")
+
+	return attrs
+}
 
 func InitLog() {
 	var (
@@ -30,19 +42,19 @@ func InitLog() {
 	// Add syslog handler if configured
 	syslogCfg = os.Getenv("SYSLOG_ADDRESS")
 	if len(syslogCfg) > 0 {
-		writer, err := net.Dial("udp", syslogCfg)
+		writer, err := syslog.Dial("udp", syslogCfg, syslog.LOG_INFO|syslog.LOG_DAEMON, "overlord")
 		if err != nil {
 			slog.Warn("Unable to establish UDP session, cannot send logs to syslog", "error", err)
 		} else {
-			handlers = append(handlers, slogsyslog.Option{Level: loggerLevel, Writer: writer}.NewSyslogHandler())
+			handlers = append(handlers, slogsyslog.Option{
+				Level:     loggerLevel,
+				Writer:    writer,
+				Converter: customConverter,
+			}.NewSyslogHandler())
 		}
 	}
 
 	// Create a multi handler that writes to all configured handlers
 	logger := slog.New(slogmulti.Fanout(handlers...))
-	logger = logger.
-		With("app_name", "overlord").
-		With("app_version", Version)
-
 	slog.SetDefault(logger)
 }
