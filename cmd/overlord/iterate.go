@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"html/template"
-	"log"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/AirVantage/overlord/pkg/changes"
 	"github.com/AirVantage/overlord/pkg/lookable"
@@ -99,7 +99,7 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 			if !prevState.Ipsets[group].Has(ip) {
 				changed = true
 				changes.Add(ip)
-				log.Println("For group", group, "new IP:", ip)
+				slog.Info("Additional IP detected", "group", group, "IP", ip)
 			}
 		}
 
@@ -107,13 +107,13 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 			if !newState.Ipsets[group].Has(oldIP) {
 				changed = true
 				changes.Remove(oldIP)
-				log.Println("For group", group, "deprecated IP:", oldIP)
+				slog.Info("Deprecated IP detected", "group", group, "IP", oldIP)
 			}
 		}
 
 		if changed {
 			for _, resource := range resourcesset {
-				log.Println("For group", group, "update ressource:", resource)
+				slog.Info("Updating ressource", "group", group, "ressource", resource)
 
 				// Merge Changes to store IP changes across differents aws resources:
 				if prevChanges, exists := resourcesToUpdate[resource]; exists {
@@ -186,7 +186,18 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 		if err != nil {
 			return nil, err
 		}
-		log.Println("For resource", resource, "start reload cmd", resource.ReloadCmd)
+
+		// Find and log the IP_ADDED and IP_REMOVED environment variables
+		ipAdded := "IP_ADDED="
+		ipRemoved := "IP_REMOVED="
+		for _, env := range cmd.Env {
+			if strings.HasPrefix(env, "IP_ADDED=") {
+				ipAdded = env
+			} else if strings.HasPrefix(env, "IP_REMOVED=") {
+				ipRemoved = env
+			}
+		}
+		slog.Info("start reload cmd", "resource", resource, "ipAdded", ipAdded, "ipRemoved", ipRemoved)
 		err = cmd.Wait()
 		if err != nil {
 			slog.Warn("Resource reload command finished with error", "resource", resource, "reload cmd", resource.ReloadCmd, "error", err)
