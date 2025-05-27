@@ -177,32 +177,33 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 		}
 
 		cmd := exec.Command("bash", "-c", resource.ReloadCmd)
+		ipAdded := ""
+		ipRemoved := ""
 		if changes != nil {
 			cmd.Env = append(os.Environ(), mkEnvVar("IP_ADDED", changes.Added()), mkEnvVar("IP_REMOVED", changes.Removed()))
+
+			// Format env for logging values:
+			for _, env := range cmd.Env {
+				if strings.HasPrefix(env, "IP_ADDED=") {
+					ipAdded = strings.TrimPrefix(env, "IP_ADDED=")
+				} else if strings.HasPrefix(env, "IP_REMOVED=") {
+					ipRemoved = strings.TrimPrefix(env, "IP_REMOVED=")
+				}
+			}
 		}
 
-		slog.Debug("Executing reload command", "resource", resource, "command", cmd)
+		// Find and log the IP_ADDED and IP_REMOVED environment variables
+		slog.Info("start reload cmd", "resourceFile", resource.Dest, "reload cmd", resource.ReloadCmd, "ipAdded", ipAdded, "ipRemoved", ipRemoved)
 		err = cmd.Start()
 		if err != nil {
 			return nil, err
 		}
 
-		// Find and log the IP_ADDED and IP_REMOVED environment variables
-		ipAdded := ""
-		ipRemoved := ""
-		for _, env := range cmd.Env {
-			if strings.HasPrefix(env, "IP_ADDED=") {
-				ipAdded = strings.TrimPrefix(env, "IP_ADDED=")
-			} else if strings.HasPrefix(env, "IP_REMOVED=") {
-				ipRemoved = strings.TrimPrefix(env, "IP_REMOVED=")
-			}
-		}
-		slog.Info("start reload cmd", "resource", resource, "ipAdded", ipAdded, "ipRemoved", ipRemoved)
 		err = cmd.Wait()
 		if err != nil {
-			slog.Warn("Resource reload command finished with error", "resource", resource, "reload cmd", resource.ReloadCmd, "error", err)
+			slog.Warn("Resource reload command finished with error", "resourceFile", resource.Dest, "reload cmd", resource.ReloadCmd, "error", err)
 		} else {
-			slog.Info("Resource reload command successfull", "resource", resource, "reload cmd", resource.ReloadCmd)
+			slog.Info("Resource reload command successfull", "resourceFile", resource.Dest, "reload cmd", resource.ReloadCmd)
 		}
 	}
 
