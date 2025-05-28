@@ -51,7 +51,9 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 			return nil, err
 		}
 
-		slog.Debug("Reading resource file", "filename", resourceFile.Name(), "config", rc)
+		slog.Debug("Reading resource configuration",
+			"filename", resourceFile.Name(),
+			"configuration", rc)
 
 		rc.Resource.SrcFSInfo, err = os.Stat(filepath.Join(*configRoot, templatesDirName, rc.Resource.Src))
 		if err != nil {
@@ -113,7 +115,10 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 
 		if changed {
 			for _, resource := range resourcesset {
-				slog.Info("Updating ressource", "group", group, "ressource", resource)
+				slog.Info("IP changes detected - marking resource for update",
+					"group", group,
+					"src", resource.Src,
+					"dest", resource.Dest)
 
 				// Merge Changes to store IP changes across differents aws resources:
 				if prevChanges, exists := resourcesToUpdate[resource]; exists {
@@ -170,7 +175,7 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 			return nil, err
 		}
 
-		slog.Info("Updating resource file from template", "resource", resource, "output", resource.Dest, "template", resource.Src)
+		slog.Info("Updating managed resource", "resource", resource)
 
 		if resource.ReloadCmd == "" {
 			continue
@@ -193,7 +198,12 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 		}
 
 		// Find and log the IP_ADDED and IP_REMOVED environment variables
-		slog.Info("start reload cmd", "resourceFile", resource.Dest, "reload cmd", resource.ReloadCmd, "ipAdded", ipAdded, "ipRemoved", ipRemoved)
+		slog.Info("Executing reload command for resource",
+			"resource_template", resource.Src,
+			"cmd", resource.ReloadCmd,
+			"ip_added", ipAdded,
+			"ip_removed", ipRemoved)
+
 		err = cmd.Start()
 		if err != nil {
 			return nil, err
@@ -201,9 +211,14 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 
 		err = cmd.Wait()
 		if err != nil {
-			slog.Warn("Resource reload command finished with error", "resourceFile", resource.Dest, "reload cmd", resource.ReloadCmd, "error", err)
+			slog.Warn("Reload command failed",
+				"resource_template", resource.Src,
+,				"cmd", resource.ReloadCmd
+				"error", err)
 		} else {
-			slog.Info("Resource reload command successfull", "resourceFile", resource.Dest, "reload cmd", resource.ReloadCmd)
+			slog.Info("Reload command successful",
+				"resource_template", resource.Src,
+				"cmd", resource.ReloadCmd)
 		}
 	}
 
