@@ -5,7 +5,6 @@ import (
 	"log/syslog"
 	"os"
 
-	"github.com/dusted-go/logging/prettylog"
 	slogmulti "github.com/samber/slog-multi"
 	slogsyslog "github.com/samber/slog-syslog/v2"
 )
@@ -25,6 +24,14 @@ func customConverter(addSource bool, replaceAttr func(groups []string, a slog.At
 	return attrs
 }
 
+// removeTimeAttr removes the time attribute from logs for local text output
+func removeTimeAttr(groups []string, a slog.Attr) slog.Attr {
+	if a.Key == "time" {
+		return slog.Attr{}
+	}
+	return a
+}
+
 func InitLog() {
 	var (
 		syslogCfg string
@@ -36,11 +43,13 @@ func InitLog() {
 		loggerLevel = slog.LevelDebug
 	}
 
-	// Always add stdout handler
-	handlers = append(handlers, prettylog.New(
-		&slog.HandlerOptions{Level: loggerLevel},
-		prettylog.WithDestinationWriter(os.Stdout),
-	))
+	// Always add stdout handler with time attribute removed
+	handlers = append(handlers,
+		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level:       loggerLevel,
+			ReplaceAttr: removeTimeAttr,
+		}),
+	)
 
 	// Add syslog handler if configured
 	syslogCfg = os.Getenv("SYSLOG_ADDRESS")
