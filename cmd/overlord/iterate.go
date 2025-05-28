@@ -213,7 +213,7 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 		if err != nil {
 			slog.Warn("Reload command failed",
 				"resource_template", resource.Src,
-,				"cmd", resource.ReloadCmd
+				"cmd", resource.ReloadCmd,
 				"error", err)
 		} else {
 			slog.Info("Reload command successful",
