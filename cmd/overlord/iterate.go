@@ -19,7 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
-func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*state.State, error) {
+func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig <-chan os.Signal) (*state.State, error) {
 	var (
 		resources         map[lookable.Lookable][]*resource.Resource      = make(map[lookable.Lookable][]*resource.Resource)
 		resourcesToUpdate map[*resource.Resource]*changes.Changes[string] = make(map[*resource.Resource]*changes.Changes[string])
@@ -78,6 +78,20 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State) (*stat
 	// find group ips to update
 	slog.Debug("Find Resources to update")
 	for g, resourcesset := range resources {
+
+		// Check for SIGHUP signal (non-blocking)
+		select {
+		case <-hupSig:
+			slog.Info("Received SIGHUP during iteration, forcing configuration reload")
+			// Force update of all resources by marking them as changed
+			for _, resource := range resourcesset {
+				if _, exists := resourcesToUpdate[resource]; !exists {
+					resourcesToUpdate[resource] = changes.New[string]()
+				}
+			}
+		default:
+			// No SIGHUP signal, continue normal processing
+		}
 
 		group := g.String()
 		ips, err := g.LookupIPs(ctx, cfg, *ipv6)

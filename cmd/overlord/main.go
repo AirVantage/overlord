@@ -5,6 +5,9 @@ import (
 	"errors"
 	"flag"
 	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"time"
 
@@ -31,6 +34,19 @@ func main() {
 		err          error
 	)
 
+	// Handle termination signals
+	termSig := make(chan os.Signal, 1)
+	signal.Notify(termSig, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+	go func() {
+		sig := <-termSig
+		slog.Error("Received termination signal", "signal", sig)
+		os.Exit(1)
+	}()
+
+	// Handle SIGHUP for configuration reload
+	hupSig := make(chan os.Signal, 1)
+	signal.Notify(hupSig, syscall.SIGHUP)
+
 	flag.Parse()
 	InitLog()
 
@@ -40,12 +56,12 @@ func main() {
 	cfg, err = config.LoadDefaultConfig(ctx)
 	if err != nil {
 		slog.Error("unable to initialize AWS SDK v2", "detail", err)
-		return
+		os.Exit(1)
 	}
 
 	// Main loop
 	for {
-		runningState, err = Iterate(ctx, cfg, runningState)
+		runningState, err = Iterate(ctx, cfg, runningState, hupSig)
 		if err != nil {
 			var oe *smithy.OperationError
 			var ae smithy.APIError
@@ -60,8 +76,16 @@ func main() {
 				}
 			}
 
-			return
+			os.Exit(1)
 		}
-		time.Sleep(*interval)
+
+		// Sleep for the configured interval, but wake up immediately on SIGHUP
+		select {
+		case <-time.After(*interval):
+			// Normal interval elapsed, continue to next iteration
+		case <-hupSig:
+			slog.Info("Received SIGHUP, interrupting sleep for immediate iteration")
+			// SIGHUP received, skip remaining sleep time and iterate immediately
+		}
 	}
 }
