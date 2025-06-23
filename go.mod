@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.29.15
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.53.1
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.224.1
-	github.com/aws/smithy-go v1.22.3
+	github.com/aws/smithy-go v1.22.4
 	github.com/samber/slog-multi v1.4.0
 	github.com/samber/slog-syslog/v2 v2.5.2
 )
