@@ -50,7 +50,10 @@ func (asg AutoScalingGroup) doLookupIPs(as ASGAPI, ec EC2API, ctx context.Contex
 	instances := make([]string, 0, numInstances)
 	for _, inst := range resp2.AutoScalingGroups[0].Instances {
 		// log.Println("Got instance Id:"+*inst.InstanceId+" health:"+*inst.HealthStatus+" LifeCycle:"+string(inst.LifecycleState))
-		if *inst.HealthStatus == "Healthy" && inst.LifecycleState == asgtypes.LifecycleStateInService {
+		if inst.LifecycleState == asgtypes.LifecycleStateInService ||
+			inst.LifecycleState == asgtypes.LifecycleStateTerminating ||
+			inst.LifecycleState == asgtypes.LifecycleStateDetaching ||
+			inst.LifecycleState == asgtypes.LifecycleStateEnteringStandby {
 			// log.Println("added")
 			instances = append(instances, *inst.InstanceId)
 		}
