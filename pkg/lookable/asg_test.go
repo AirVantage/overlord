@@ -93,7 +93,7 @@ func TestLookupASG(t *testing.T) {
 			asg:  "mon-tag",
 			ipv6: false,
 
-			expect: []string{"10.0.0.1"},
+			expect: []string{"10.0.0.1", "10.0.0.2"},
 		},
 	}
 

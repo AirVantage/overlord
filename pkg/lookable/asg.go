@@ -11,6 +11,16 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
+var validLifecycleStates = map[asgtypes.LifecycleState]bool{
+	asgtypes.LifecycleStateInService:       true,
+	asgtypes.LifecycleStateTerminating:     true,
+	asgtypes.LifecycleStateTerminated:      false,
+	asgtypes.LifecycleStateDetaching:       true,
+	asgtypes.LifecycleStateDetached:        false,
+	asgtypes.LifecycleStateEnteringStandby: true,
+	asgtypes.LifecycleStateStandby:         false,
+}
+
 // AutoScalingGroup is a Lookable ASG tag name.
 type AutoScalingGroup string
 
@@ -50,7 +60,7 @@ func (asg AutoScalingGroup) doLookupIPs(as ASGAPI, ec EC2API, ctx context.Contex
 	instances := make([]string, 0, numInstances)
 	for _, inst := range resp2.AutoScalingGroups[0].Instances {
 		// log.Println("Got instance Id:"+*inst.InstanceId+" health:"+*inst.HealthStatus+" LifeCycle:"+string(inst.LifecycleState))
-		if *inst.HealthStatus == "Healthy" && inst.LifecycleState == asgtypes.LifecycleStateInService {
+		if validLifecycleStates[inst.LifecycleState] {
 			// log.Println("added")
 			instances = append(instances, *inst.InstanceId)
 		}
