@@ -14,8 +14,11 @@ import (
 var validLifecycleStates = map[asgtypes.LifecycleState]bool{
 	asgtypes.LifecycleStateInService:       true,
 	asgtypes.LifecycleStateTerminating:     true,
+	asgtypes.LifecycleStateTerminated:      false,
 	asgtypes.LifecycleStateDetaching:       true,
+	asgtypes.LifecycleStateDetached:        false,
 	asgtypes.LifecycleStateEnteringStandby: true,
+	asgtypes.LifecycleStateStandby:         false,
 }
 
 // AutoScalingGroup is a Lookable ASG tag name.
