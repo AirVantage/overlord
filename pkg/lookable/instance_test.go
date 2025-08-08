@@ -82,6 +82,7 @@ func TestInstanceInfo_Equals(t *testing.T) {
 		t.Error("Expected instances with different lifecycle states to not be equal")
 	}
 
+	// nolint:dupArg // This test verifies the reflexive property of Equals
 	if !instance1.Equals(instance1) {
 		t.Error("Expected instance to be equal to itself")
 	}
