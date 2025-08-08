@@ -41,3 +41,67 @@ listen  my-app
 	{{range $index, $ip := index . "my-asg"}}server my-backend-{{$index}} {{$ip}}
 	{{end}}
 ```
+
+## Advanced Template Features
+
+### Instance Details
+
+In addition to IP addresses, overlord now provides detailed instance information including lifecycle state, health status, and more. This allows for more sophisticated configuration logic.
+
+#### Template Data Structure
+
+Templates now receive a data structure with two main sections:
+
+- `.ips` - Backward compatible IP address lists (same as before)
+- `.instances` - Detailed instance information
+
+#### Instance Information Fields
+
+Each instance in the `.instances` array provides:
+
+- `InstanceID` - AWS instance ID
+- `PrivateIP` - Private IPv4 address
+- `IPv6Address` - IPv6 address
+- `LifecycleState` - ASG lifecycle state (InService, Terminating, etc.)
+- `HealthStatus` - Instance health status
+- `InstanceState` - EC2 instance state (running, stopped, etc.)
+- `AvailabilityZone` - AWS availability zone
+- `InstanceType` - EC2 instance type
+- `GetIP(ipv6 bool)` - Method to get appropriate IP address
+- `IsHealthy()` - Method to check if instance is in a healthy state
+
+#### Example Template with Instance Details
+
+```go
+# Backward compatible IP access
+{{range index .ips "my-asg"}}
+  IP: {{.}}
+{{end}}
+
+# New instance details access
+{{range index .instances "my-asg"}}
+  Instance: {{.InstanceID}}
+  IP: {{.GetIP false}}
+  Lifecycle State: {{.LifecycleState}}
+  Health Status: {{.HealthStatus}}
+  Is Healthy: {{.IsHealthy}}
+{{end}}
+
+# Conditional logic based on lifecycle state
+{{range index .instances "my-asg"}}
+  {{if eq .LifecycleState "InService"}}
+    server backend-{{.InstanceID}} {{.GetIP false}} check
+  {{else if eq .LifecycleState "Terminating"}}
+    # Instance is being terminated, exclude from config
+  {{end}}
+{{end}}
+
+# Only include healthy instances
+{{range index .instances "my-asg"}}
+  {{if .IsHealthy}}
+    server healthy-backend-{{.InstanceID}} {{.GetIP false}} check
+  {{end}}
+{{end}}
+```
+
+This enhanced functionality allows for more sophisticated load balancer configurations, health-aware routing, and better monitoring integration.

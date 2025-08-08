@@ -12,13 +12,19 @@ import (
 )
 
 var validLifecycleStates = map[asgtypes.LifecycleState]bool{
-	asgtypes.LifecycleStateInService:       true,
-	asgtypes.LifecycleStateTerminating:     true,
-	asgtypes.LifecycleStateTerminated:      false,
-	asgtypes.LifecycleStateDetaching:       true,
-	asgtypes.LifecycleStateDetached:        false,
-	asgtypes.LifecycleStateEnteringStandby: true,
-	asgtypes.LifecycleStateStandby:         false,
+	asgtypes.LifecycleStatePending:            false,
+	asgtypes.LifecycleStatePendingWait:        false,
+	asgtypes.LifecycleStatePendingProceed:     false,
+	asgtypes.LifecycleStateInService:          true,
+	asgtypes.LifecycleStateTerminating:        true,
+	asgtypes.LifecycleStateTerminatingWait:    true,
+	asgtypes.LifecycleStateTerminatingProceed: false,
+	asgtypes.LifecycleStateTerminated:         false,
+	asgtypes.LifecycleStateDetaching:          true,
+	asgtypes.LifecycleStateDetached:           false,
+	asgtypes.LifecycleStateEnteringStandby:    true,
+	asgtypes.LifecycleStateStandby:            false,
+	// Note: warmed pool not handled
 }
 
 // AutoScalingGroup is a Lookable ASG tag name.
@@ -30,8 +36,22 @@ func (asg AutoScalingGroup) String() string {
 
 // LookupIPs of all the instances in this AutoScalingGroup.
 func (asg AutoScalingGroup) doLookupIPs(as ASGAPI, ec EC2API, ctx context.Context, ipv6 bool) ([]string, error) {
+	instances, err := asg.doLookupInstances(as, ec, ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	var output []string
+	for _, instance := range instances {
+		output = append(output, instance.GetIP(ipv6))
+	}
+
+	return output, nil
+}
+
+// doLookupInstances returns detailed information about all instances in this AutoScalingGroup.
+func (asg AutoScalingGroup) doLookupInstances(as ASGAPI, ec EC2API, ctx context.Context) ([]*InstanceInfo, error) {
+	var output []*InstanceInfo
 
 	// Find the ASG instances
 	params2 := &autoscaling.DescribeAutoScalingGroupsInput{
@@ -58,11 +78,13 @@ func (asg AutoScalingGroup) doLookupIPs(as ASGAPI, ec EC2API, ctx context.Contex
 
 	// Make a list of healthy instance ID in the ASG
 	instances := make([]string, 0, numInstances)
+	instanceDetails := make(map[string]*asgtypes.Instance)
 	for _, inst := range resp2.AutoScalingGroups[0].Instances {
-		// log.Println("Got instance Id:"+*inst.InstanceId+" health:"+*inst.HealthStatus+" LifeCycle:"+string(inst.LifecycleState))
+		// log.Println("Got instance Id:" + *inst.InstanceId + " health:" + *inst.HealthStatus + " LifeCycle:" + string(inst.LifecycleState))
 		if validLifecycleStates[inst.LifecycleState] {
 			// log.Println("added")
 			instances = append(instances, *inst.InstanceId)
+			instanceDetails[*inst.InstanceId] = &inst
 		}
 	}
 
@@ -88,11 +110,42 @@ func (asg AutoScalingGroup) doLookupIPs(as ASGAPI, ec EC2API, ctx context.Contex
 
 	for _, reservation := range resp3.Reservations {
 		for _, instance := range reservation.Instances {
-			if ipv6 {
-				output = append(output, *instance.Ipv6Address)
-			} else {
-				output = append(output, *instance.PrivateIpAddress)
+			var ipv6Addr string
+			if instance.Ipv6Address != nil {
+				ipv6Addr = *instance.Ipv6Address
 			}
+
+			var privateIP string
+			if instance.PrivateIpAddress != nil {
+				privateIP = *instance.PrivateIpAddress
+			}
+
+			var stateName ec2types.InstanceStateName
+			if instance.State != nil {
+				stateName = instance.State.Name
+			}
+
+			var azName string
+			if instance.Placement.AvailabilityZone != nil {
+				azName = *instance.Placement.AvailabilityZone
+			}
+
+			instanceInfo := &InstanceInfo{
+				InstanceID:       *instance.InstanceId,
+				PrivateIP:        privateIP,
+				IPv6Address:      ipv6Addr,
+				InstanceState:    stateName,
+				AvailabilityZone: azName,
+				InstanceType:     string(instance.InstanceType),
+			}
+
+			asgInstance := instanceDetails[*instance.InstanceId]
+			if asgInstance != nil {
+				instanceInfo.LifecycleState = asgInstance.LifecycleState
+				instanceInfo.HealthStatus = *asgInstance.HealthStatus
+			}
+
+			output = append(output, instanceInfo)
 		}
 	}
 
@@ -102,4 +155,9 @@ func (asg AutoScalingGroup) doLookupIPs(as ASGAPI, ec EC2API, ctx context.Contex
 // LookupIPs of all the instances in this AutoScalingGroup.
 func (asg AutoScalingGroup) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error) {
 	return asg.doLookupIPs(autoscaling.NewFromConfig(cfg), ec2.NewFromConfig(cfg), ctx, ipv6)
+}
+
+// LookupInstances returns detailed information about all instances in this AutoScalingGroup.
+func (asg AutoScalingGroup) LookupInstances(ctx context.Context, cfg aws.Config) ([]*InstanceInfo, error) {
+	return asg.doLookupInstances(autoscaling.NewFromConfig(cfg), ec2.NewFromConfig(cfg), ctx)
 }

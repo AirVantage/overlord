@@ -94,7 +94,7 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 		}
 
 		group := g.String()
-		ips, err := g.LookupIPs(ctx, cfg, *ipv6)
+		instances, err := g.LookupInstances(ctx, cfg)
 
 		// if some AWS API calls failed during the IPs lookup, stop here and exit
 		// it will keep the dest file unmodified and won't execute the reload command.
@@ -103,15 +103,59 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 		}
 
 		newState.Ipsets[group] = set.New[string]()
+		newState.InstanceSets[group] = instances
+		newState.InstanceHashes[group] = make(map[string]string)
 		changes := changes.New[string]()
 		changed := false
 
 		if _, exists := prevState.Ipsets[group]; !exists {
 			prevState.Ipsets[group] = set.New[string]()
 		}
+		if _, exists := prevState.InstanceHashes[group]; !exists {
+			prevState.InstanceHashes[group] = make(map[string]string)
+		}
 
-		for _, ip := range ips {
+		// Extract IPs from instances for backward compatibility and build instance hash map
+		var ips []string
+		for _, instance := range instances {
+			ip := instance.GetIP(*ipv6)
+			ips = append(ips, ip)
 			newState.Ipsets[group].Add(ip)
+			newState.InstanceHashes[group][instance.InstanceID] = instance.GetHash()
+		}
+
+		// Detect changes at the instance level - this will catch state changes like "Terminating"
+		// that don't necessarily change the IP address but should trigger configuration updates
+		prevInstanceHashes := prevState.InstanceHashes[group]
+		currentInstanceHashes := newState.InstanceHashes[group]
+
+		// Check for new or changed instances
+		for instanceID, currentHash := range currentInstanceHashes {
+			if prevHash, exists := prevInstanceHashes[instanceID]; !exists {
+				// New instance
+				changed = true
+				changes.Add(instanceID)
+				slog.Info("New instance detected", "group", group, "instance", instanceID)
+			} else if prevHash != currentHash {
+				// Instance state changed
+				changed = true
+				changes.Add(instanceID)
+				slog.Info("Instance state changed", "group", group, "instance", instanceID)
+			}
+		}
+
+		// Check for removed instances
+		for instanceID := range prevInstanceHashes {
+			if _, exists := currentInstanceHashes[instanceID]; !exists {
+				// Instance removed
+				changed = true
+				changes.Remove(instanceID)
+				slog.Info("Instance removed", "group", group, "instance", instanceID)
+			}
+		}
+
+		// Also check IP-level changes for backward compatibility
+		for _, ip := range ips {
 			if !prevState.Ipsets[group].Has(ip) {
 				changed = true
 				changes.Add(ip)
@@ -129,12 +173,12 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 
 		if changed {
 			for _, resource := range resourcesset {
-				slog.Info("IP changes detected - marking resource for update",
+				slog.Info("Instance or IP changes detected - marking resource for update",
 					"group", group,
 					"src", resource.Src,
 					"dest", resource.Dest)
 
-				// Merge Changes to store IP changes across differents aws resources:
+				// Merge Changes to store changes across different aws resources:
 				if prevChanges, exists := resourcesToUpdate[resource]; exists {
 					resourcesToUpdate[resource] = prevChanges.Merge(changes)
 				} else {
@@ -156,6 +200,7 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 
 	// Convert set to sorted array for use with text/template
 	ips := make(map[string][]string)
+	instanceDetails := make(map[string][]*lookable.InstanceInfo)
 	for group, ipsSet := range newState.Ipsets {
 		ipsList := make([]string, 0, len(*ipsSet))
 		for ip := range *ipsSet {
@@ -163,6 +208,7 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 		}
 		sort.Strings(ipsList)
 		ips[group] = ipsList
+		instanceDetails[group] = newState.InstanceSets[group]
 	}
 
 	// generate resources
@@ -184,7 +230,14 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 			return nil, err
 
 		}
-		err = tmpl.Execute(destFile, ips)
+
+		// Create template data with both IPs (for backward compatibility) and instance details
+		templateData := map[string]interface{}{
+			"ips":       ips,
+			"instances": instanceDetails,
+		}
+
+		err = tmpl.Execute(destFile, templateData)
 		if err != nil {
 			return nil, err
 		}
