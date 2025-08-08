@@ -80,7 +80,7 @@ func (asg AutoScalingGroup) doLookupInstances(as ASGAPI, ec EC2API, ctx context.
 	instances := make([]string, 0, numInstances)
 	instanceDetails := make(map[string]*asgtypes.Instance)
 	for _, inst := range resp2.AutoScalingGroups[0].Instances {
-		//log.Println("Got instance Id:" + *inst.InstanceId + " health:" + *inst.HealthStatus + " LifeCycle:" + string(inst.LifecycleState))
+		// log.Println("Got instance Id:" + *inst.InstanceId + " health:" + *inst.HealthStatus + " LifeCycle:" + string(inst.LifecycleState))
 		if validLifecycleStates[inst.LifecycleState] {
 			// log.Println("added")
 			instances = append(instances, *inst.InstanceId)
