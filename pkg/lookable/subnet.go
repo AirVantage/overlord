@@ -7,6 +7,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
 // Subnet is a Lookable AWS subnet tag name.
@@ -75,12 +76,32 @@ func (s Subnet) doLookupInstances(api EC2API, ctx context.Context) ([]*InstanceI
 
 	for _, reservation := range resp2.Reservations {
 		for _, instance := range reservation.Instances {
+			var ipv6Addr string
+			if instance.Ipv6Address != nil {
+				ipv6Addr = *instance.Ipv6Address
+			}
+
+			var privateIP string
+			if instance.PrivateIpAddress != nil {
+				privateIP = *instance.PrivateIpAddress
+			}
+
+			var stateName ec2types.InstanceStateName
+			if instance.State != nil {
+				stateName = instance.State.Name
+			}
+
+			var azName string
+			if instance.Placement.AvailabilityZone != nil {
+				azName = *instance.Placement.AvailabilityZone
+			}
+
 			instanceInfo := &InstanceInfo{
 				InstanceID:       *instance.InstanceId,
-				PrivateIP:        *instance.PrivateIpAddress,
-				IPv6Address:      *instance.Ipv6Address,
-				InstanceState:    instance.State.Name,
-				AvailabilityZone: *instance.Placement.AvailabilityZone,
+				PrivateIP:        privateIP,
+				IPv6Address:      ipv6Addr,
+				InstanceState:    stateName,
+				AvailabilityZone: azName,
 				InstanceType:     string(instance.InstanceType),
 				// For Subnet lookups, we don't have ASG lifecycle state info
 				LifecycleState: "",

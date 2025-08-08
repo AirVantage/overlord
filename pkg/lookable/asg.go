@@ -80,7 +80,7 @@ func (asg AutoScalingGroup) doLookupInstances(as ASGAPI, ec EC2API, ctx context.
 	instances := make([]string, 0, numInstances)
 	instanceDetails := make(map[string]*asgtypes.Instance)
 	for _, inst := range resp2.AutoScalingGroups[0].Instances {
-		// log.Println("Got instance Id:"+*inst.InstanceId+" health:"+*inst.HealthStatus+" LifeCycle:"+string(inst.LifecycleState))
+		//log.Println("Got instance Id:" + *inst.InstanceId + " health:" + *inst.HealthStatus + " LifeCycle:" + string(inst.LifecycleState))
 		if validLifecycleStates[inst.LifecycleState] {
 			// log.Println("added")
 			instances = append(instances, *inst.InstanceId)
@@ -110,16 +110,36 @@ func (asg AutoScalingGroup) doLookupInstances(as ASGAPI, ec EC2API, ctx context.
 
 	for _, reservation := range resp3.Reservations {
 		for _, instance := range reservation.Instances {
-			asgInstance := instanceDetails[*instance.InstanceId]
+			var ipv6Addr string
+			if instance.Ipv6Address != nil {
+				ipv6Addr = *instance.Ipv6Address
+			}
+
+			var privateIP string
+			if instance.PrivateIpAddress != nil {
+				privateIP = *instance.PrivateIpAddress
+			}
+
+			var stateName ec2types.InstanceStateName
+			if instance.State != nil {
+				stateName = instance.State.Name
+			}
+
+			var azName string
+			if instance.Placement.AvailabilityZone != nil {
+				azName = *instance.Placement.AvailabilityZone
+			}
+
 			instanceInfo := &InstanceInfo{
 				InstanceID:       *instance.InstanceId,
-				PrivateIP:        *instance.PrivateIpAddress,
-				IPv6Address:      *instance.Ipv6Address,
-				InstanceState:    instance.State.Name,
-				AvailabilityZone: *instance.Placement.AvailabilityZone,
+				PrivateIP:        privateIP,
+				IPv6Address:      ipv6Addr,
+				InstanceState:    stateName,
+				AvailabilityZone: azName,
 				InstanceType:     string(instance.InstanceType),
 			}
 
+			asgInstance := instanceDetails[*instance.InstanceId]
 			if asgInstance != nil {
 				instanceInfo.LifecycleState = asgInstance.LifecycleState
 				instanceInfo.HealthStatus = *asgInstance.HealthStatus
