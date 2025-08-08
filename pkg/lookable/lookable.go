@@ -10,5 +10,7 @@ import (
 type Lookable interface {
 	// LookupIPs returns the list of IP addresses of the Lookable instances, in IPv4 or IPv6.
 	LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error)
+	// LookupInstances returns detailed information about the Lookable instances.
+	LookupInstances(ctx context.Context, cfg aws.Config) ([]*InstanceInfo, error)
 	String() string
 }

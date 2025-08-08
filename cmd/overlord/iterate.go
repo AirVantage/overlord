@@ -94,7 +94,7 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 		}
 
 		group := g.String()
-		ips, err := g.LookupIPs(ctx, cfg, *ipv6)
+		instances, err := g.LookupInstances(ctx, cfg)
 
 		// if some AWS API calls failed during the IPs lookup, stop here and exit
 		// it will keep the dest file unmodified and won't execute the reload command.
@@ -103,6 +103,7 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 		}
 
 		newState.Ipsets[group] = set.New[string]()
+		newState.InstanceSets[group] = instances
 		changes := changes.New[string]()
 		changed := false
 
@@ -110,8 +111,15 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 			prevState.Ipsets[group] = set.New[string]()
 		}
 
-		for _, ip := range ips {
+		// Extract IPs from instances for backward compatibility
+		var ips []string
+		for _, instance := range instances {
+			ip := instance.GetIP(*ipv6)
+			ips = append(ips, ip)
 			newState.Ipsets[group].Add(ip)
+		}
+
+		for _, ip := range ips {
 			if !prevState.Ipsets[group].Has(ip) {
 				changed = true
 				changes.Add(ip)
@@ -156,6 +164,7 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 
 	// Convert set to sorted array for use with text/template
 	ips := make(map[string][]string)
+	instanceDetails := make(map[string][]*lookable.InstanceInfo)
 	for group, ipsSet := range newState.Ipsets {
 		ipsList := make([]string, 0, len(*ipsSet))
 		for ip := range *ipsSet {
@@ -163,6 +172,7 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 		}
 		sort.Strings(ipsList)
 		ips[group] = ipsList
+		instanceDetails[group] = newState.InstanceSets[group]
 	}
 
 	// generate resources
@@ -184,7 +194,14 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 			return nil, err
 
 		}
-		err = tmpl.Execute(destFile, ips)
+
+		// Create template data with both IPs (for backward compatibility) and instance details
+		templateData := map[string]interface{}{
+			"ips":       ips,
+			"instances": instanceDetails,
+		}
+
+		err = tmpl.Execute(destFile, templateData)
 		if err != nil {
 			return nil, err
 		}

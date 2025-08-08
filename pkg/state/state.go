@@ -1,19 +1,22 @@
 package state
 
 import (
+	"github.com/AirVantage/overlord/pkg/lookable"
 	"github.com/AirVantage/overlord/pkg/resource"
 	"github.com/AirVantage/overlord/pkg/set"
 )
 
 type State struct {
-	Ipsets    map[string]*set.Set[string]
-	Templates map[string]*resource.Resource
+	Ipsets       map[string]*set.Set[string]
+	InstanceSets map[string][]*lookable.InstanceInfo
+	Templates    map[string]*resource.Resource
 }
 
 // NewChanges return a pointer to an initialized Changes struct.
 func New() *State {
 	return &State{
-		Ipsets:    make(map[string]*set.Set[string]),
-		Templates: make(map[string]*resource.Resource),
+		Ipsets:       make(map[string]*set.Set[string]),
+		InstanceSets: make(map[string][]*lookable.InstanceInfo),
+		Templates:    make(map[string]*resource.Resource),
 	}
 }

@@ -18,8 +18,22 @@ func (s Subnet) String() string {
 
 // LookupIPs of all the instances belonging to the given subnet.
 func (s Subnet) doLookupIPs(api EC2API, ctx context.Context, ipv6 bool) ([]string, error) {
+	instances, err := s.doLookupInstances(api, ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	var output []string
+	for _, instance := range instances {
+		output = append(output, instance.GetIP(ipv6))
+	}
+
+	return output, nil
+}
+
+// doLookupInstances returns detailed information about all instances in the given subnet.
+func (s Subnet) doLookupInstances(api EC2API, ctx context.Context) ([]*InstanceInfo, error) {
+	var output []*InstanceInfo
 
 	// Find the subnet
 	params1 := &ec2.DescribeSubnetsInput{
@@ -61,11 +75,19 @@ func (s Subnet) doLookupIPs(api EC2API, ctx context.Context, ipv6 bool) ([]strin
 
 	for _, reservation := range resp2.Reservations {
 		for _, instance := range reservation.Instances {
-			if ipv6 {
-				output = append(output, *instance.Ipv6Address)
-			} else {
-				output = append(output, *instance.PrivateIpAddress)
+			instanceInfo := &InstanceInfo{
+				InstanceID:       *instance.InstanceId,
+				PrivateIP:        *instance.PrivateIpAddress,
+				IPv6Address:      *instance.Ipv6Address,
+				InstanceState:    instance.State.Name,
+				AvailabilityZone: *instance.Placement.AvailabilityZone,
+				InstanceType:     string(instance.InstanceType),
+				// For Subnet lookups, we don't have ASG lifecycle state info
+				LifecycleState: "",
+				HealthStatus:   "",
 			}
+
+			output = append(output, instanceInfo)
 		}
 	}
 
@@ -75,4 +97,9 @@ func (s Subnet) doLookupIPs(api EC2API, ctx context.Context, ipv6 bool) ([]strin
 // Implement public interface
 func (s Subnet) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error) {
 	return s.doLookupIPs(ec2.NewFromConfig(cfg), ctx, ipv6)
+}
+
+// LookupInstances returns detailed information about all instances in the given subnet.
+func (s Subnet) LookupInstances(ctx context.Context, cfg aws.Config) ([]*InstanceInfo, error) {
+	return s.doLookupInstances(ec2.NewFromConfig(cfg), ctx)
 }
