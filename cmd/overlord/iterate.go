@@ -104,21 +104,57 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 
 		newState.Ipsets[group] = set.New[string]()
 		newState.InstanceSets[group] = instances
+		newState.InstanceHashes[group] = make(map[string]string)
 		changes := changes.New[string]()
 		changed := false
 
 		if _, exists := prevState.Ipsets[group]; !exists {
 			prevState.Ipsets[group] = set.New[string]()
 		}
+		if _, exists := prevState.InstanceHashes[group]; !exists {
+			prevState.InstanceHashes[group] = make(map[string]string)
+		}
 
-		// Extract IPs from instances for backward compatibility
+		// Extract IPs from instances for backward compatibility and build instance hash map
 		var ips []string
 		for _, instance := range instances {
 			ip := instance.GetIP(*ipv6)
 			ips = append(ips, ip)
 			newState.Ipsets[group].Add(ip)
+			newState.InstanceHashes[group][instance.InstanceID] = instance.GetHash()
 		}
 
+		// Detect changes at the instance level - this will catch state changes like "Terminating"
+		// that don't necessarily change the IP address but should trigger configuration updates
+		prevInstanceHashes := prevState.InstanceHashes[group]
+		currentInstanceHashes := newState.InstanceHashes[group]
+
+		// Check for new or changed instances
+		for instanceID, currentHash := range currentInstanceHashes {
+			if prevHash, exists := prevInstanceHashes[instanceID]; !exists {
+				// New instance
+				changed = true
+				changes.Add(instanceID)
+				slog.Info("New instance detected", "group", group, "instance", instanceID)
+			} else if prevHash != currentHash {
+				// Instance state changed
+				changed = true
+				changes.Add(instanceID)
+				slog.Info("Instance state changed", "group", group, "instance", instanceID)
+			}
+		}
+
+		// Check for removed instances
+		for instanceID := range prevInstanceHashes {
+			if _, exists := currentInstanceHashes[instanceID]; !exists {
+				// Instance removed
+				changed = true
+				changes.Remove(instanceID)
+				slog.Info("Instance removed", "group", group, "instance", instanceID)
+			}
+		}
+
+		// Also check IP-level changes for backward compatibility
 		for _, ip := range ips {
 			if !prevState.Ipsets[group].Has(ip) {
 				changed = true
@@ -137,12 +173,12 @@ func Iterate(ctx context.Context, cfg aws.Config, prevState *state.State, hupSig
 
 		if changed {
 			for _, resource := range resourcesset {
-				slog.Info("IP changes detected - marking resource for update",
+				slog.Info("Instance or IP changes detected - marking resource for update",
 					"group", group,
 					"src", resource.Src,
 					"dest", resource.Dest)
 
-				// Merge Changes to store IP changes across differents aws resources:
+				// Merge Changes to store changes across different aws resources:
 				if prevChanges, exists := resourcesToUpdate[resource]; exists {
 					resourcesToUpdate[resource] = prevChanges.Merge(changes)
 				} else {
