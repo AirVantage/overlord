@@ -91,41 +91,8 @@ func (asg AutoScalingGroup) doLookupInstances(as ASGAPI, ec EC2API, ctx context.
 
 	for _, reservation := range resp3.Reservations {
 		for _, instance := range reservation.Instances {
-			var ipv6Addr string
-			if instance.Ipv6Address != nil {
-				ipv6Addr = *instance.Ipv6Address
-			}
-
-			var privateIP string
-			if instance.PrivateIpAddress != nil {
-				privateIP = *instance.PrivateIpAddress
-			}
-
-			var stateName ec2types.InstanceStateName
-			if instance.State != nil {
-				stateName = instance.State.Name
-			}
-
-			var azName string
-			if instance.Placement.AvailabilityZone != nil {
-				azName = *instance.Placement.AvailabilityZone
-			}
-
-			instanceInfo := &InstanceInfo{
-				InstanceID:       *instance.InstanceId,
-				PrivateIP:        privateIP,
-				IPv6Address:      ipv6Addr,
-				InstanceState:    stateName,
-				AvailabilityZone: azName,
-				InstanceType:     string(instance.InstanceType),
-			}
-
 			asgInstance := instanceDetails[*instance.InstanceId]
-			if asgInstance != nil {
-				instanceInfo.LifecycleState = asgInstance.LifecycleState
-				instanceInfo.HealthStatus = *asgInstance.HealthStatus
-			}
-
+			instanceInfo := NewInstanceInfo(instance, asgInstance)
 			output = append(output, instanceInfo)
 		}
 	}

@@ -21,6 +21,50 @@ type InstanceInfo struct {
 	InstanceType     string
 }
 
+// NewInstanceInfo creates an InstanceInfo from an EC2 instance
+// The asgInstance parameter is optional - if provided, ASG lifecycle state will be included
+func NewInstanceInfo(instance ec2types.Instance, asgInstance *asgtypes.Instance) *InstanceInfo {
+	var ipv6Addr string
+	if instance.Ipv6Address != nil {
+		ipv6Addr = *instance.Ipv6Address
+	}
+
+	var privateIP string
+	if instance.PrivateIpAddress != nil {
+		privateIP = *instance.PrivateIpAddress
+	}
+
+	var stateName ec2types.InstanceStateName
+	if instance.State != nil {
+		stateName = instance.State.Name
+	}
+
+	var azName string
+	if instance.Placement.AvailabilityZone != nil {
+		azName = *instance.Placement.AvailabilityZone
+	}
+
+	instanceInfo := &InstanceInfo{
+		InstanceID:       *instance.InstanceId,
+		PrivateIP:        privateIP,
+		IPv6Address:      ipv6Addr,
+		InstanceState:    stateName,
+		AvailabilityZone: azName,
+		InstanceType:     string(instance.InstanceType),
+		// Default values for ASG fields
+		LifecycleState: "",
+		HealthStatus:   "",
+	}
+
+	// Add ASG lifecycle state if available
+	if asgInstance != nil {
+		instanceInfo.LifecycleState = asgInstance.LifecycleState
+		instanceInfo.HealthStatus = *asgInstance.HealthStatus
+	}
+
+	return instanceInfo
+}
+
 // GetIP returns the appropriate IP address based on the ipv6 flag
 func (i *InstanceInfo) GetIP(ipv6 bool) string {
 	if ipv6 {
