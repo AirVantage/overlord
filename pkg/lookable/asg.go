@@ -11,22 +11,6 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
-var validLifecycleStates = map[asgtypes.LifecycleState]bool{
-	asgtypes.LifecycleStatePending:            false,
-	asgtypes.LifecycleStatePendingWait:        false,
-	asgtypes.LifecycleStatePendingProceed:     false,
-	asgtypes.LifecycleStateInService:          true,
-	asgtypes.LifecycleStateTerminating:        true,
-	asgtypes.LifecycleStateTerminatingWait:    true,
-	asgtypes.LifecycleStateTerminatingProceed: false,
-	asgtypes.LifecycleStateTerminated:         false,
-	asgtypes.LifecycleStateDetaching:          true,
-	asgtypes.LifecycleStateDetached:           false,
-	asgtypes.LifecycleStateEnteringStandby:    true,
-	asgtypes.LifecycleStateStandby:            false,
-	// Note: warmed pool not handled
-}
-
 // AutoScalingGroup is a Lookable ASG tag name.
 type AutoScalingGroup string
 
@@ -81,11 +65,8 @@ func (asg AutoScalingGroup) doLookupInstances(as ASGAPI, ec EC2API, ctx context.
 	instanceDetails := make(map[string]*asgtypes.Instance)
 	for _, inst := range resp2.AutoScalingGroups[0].Instances {
 		// log.Println("Got instance Id:" + *inst.InstanceId + " health:" + *inst.HealthStatus + " LifeCycle:" + string(inst.LifecycleState))
-		if validLifecycleStates[inst.LifecycleState] {
-			// log.Println("added")
-			instances = append(instances, *inst.InstanceId)
-			instanceDetails[*inst.InstanceId] = &inst
-		}
+		instances = append(instances, *inst.InstanceId)
+		instanceDetails[*inst.InstanceId] = &inst
 	}
 
 	// No healthy instances

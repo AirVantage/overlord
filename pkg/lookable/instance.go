@@ -29,11 +29,6 @@ func (i *InstanceInfo) GetIP(ipv6 bool) string {
 	return i.PrivateIP
 }
 
-// IsHealthy returns true if the instance is in a healthy state
-func (i *InstanceInfo) IsHealthy() bool {
-	return validLifecycleStates[i.LifecycleState]
-}
-
 // GetHash returns a hash of the instance state for change detection
 func (i *InstanceInfo) GetHash() string {
 	// Create a string representation of non static part of the instance state
