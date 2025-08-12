@@ -116,7 +116,12 @@ func detectChangesForGroup(ctx context.Context, cfg aws.Config, g lookable.Looka
 		} else if !currentInstance.Equals(prevInstance) {
 			// Instance state changed
 			changed = true
-			slog.Info("Instance state changed", "group", group, "instance", instanceID)
+			slog.Info("Instance state changed",
+				"group", group,
+				"instance", instanceID,
+				"InstanceState", currentInstance.InstanceState,
+				"LifecycleState", currentInstance.LifecycleState,
+				"HealthSTatus", currentInstance.HealthStatus)
 		}
 	}
 
