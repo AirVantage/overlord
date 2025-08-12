@@ -75,7 +75,7 @@ func (s Subnet) doLookupInstances(api EC2API, ctx context.Context) ([]*InstanceI
 
 	for _, reservation := range resp2.Reservations {
 		for _, instance := range reservation.Instances {
-			instanceInfo := NewInstanceInfoFromEC2Instance(instance, nil)
+			instanceInfo := NewInstanceInfo(instance, nil)
 			output = append(output, instanceInfo)
 		}
 	}
