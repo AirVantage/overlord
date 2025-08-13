@@ -50,7 +50,16 @@ func TestLookupSubnet(t *testing.T) {
 								{
 									Instances: []ec2types.Instance{
 										{
+											InstanceId:       aws.String("i-01233445"),
 											PrivateIpAddress: aws.String("10.0.0.1"),
+											Ipv6Address:      aws.String("f00:ba5:10:0:0:1"),
+											State: &ec2types.InstanceState{
+												Name: ec2types.InstanceStateNameRunning,
+											},
+											Placement: &ec2types.Placement{
+												AvailabilityZone: aws.String("us-west-2a"),
+											},
+											InstanceType: ec2types.InstanceTypeT3Micro,
 										},
 									},
 								},

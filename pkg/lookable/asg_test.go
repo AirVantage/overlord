@@ -74,8 +74,16 @@ func TestLookupASG(t *testing.T) {
 								t.Log("Instance Id:" + id + " got ipv4:" + ipv4Address + " ipv6:" + ipv6Address)
 								instances = append(instances,
 									ec2types.Instance{
+										InstanceId:       aws.String(id),
 										PrivateIpAddress: aws.String(ipv4Address),
 										Ipv6Address:      aws.String(ipv6Address),
+										State: &ec2types.InstanceState{
+											Name: ec2types.InstanceStateNameRunning,
+										},
+										Placement: &ec2types.Placement{
+											AvailabilityZone: aws.String("us-west-2a"),
+										},
+										InstanceType: ec2types.InstanceTypeT3Micro,
 									})
 							}
 
@@ -93,7 +101,7 @@ func TestLookupASG(t *testing.T) {
 			asg:  "mon-tag",
 			ipv6: false,
 
-			expect: []string{"10.0.0.1", "10.0.0.2"},
+			expect: []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"},
 		},
 	}
 

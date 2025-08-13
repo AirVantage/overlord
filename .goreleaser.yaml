@@ -29,10 +29,10 @@ builds:
 archives:
   -
     id: archive
-    builds:
+    ids:
       - default
 
-    format: tar.gz
+    formats: [ 'tar.gz' ]
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
 
     # Don't include README:
@@ -40,10 +40,10 @@ archives:
       - none*
   -
     id: binary
-    builds:
+    ids:
       - default
 
-    format: binary
+    formats: [ 'binary' ]
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
 
 checksum:

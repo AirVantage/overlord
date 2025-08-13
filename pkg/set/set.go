@@ -29,7 +29,7 @@ func (ss Set[T]) ToSlice() []T {
 	// Allocate a large enough slice
 	slice := make([]T, 0, len(ss))
 
-	for key, _ := range ss {
+	for key := range ss {
 		slice = append(slice, key)
 	}
 	return slice

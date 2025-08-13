@@ -33,7 +33,16 @@ func TestTagLookupIPs(t *testing.T) {
 								{
 									Instances: []ec2types.Instance{
 										{
+											InstanceId:       aws.String("i-01233445"),
 											PrivateIpAddress: aws.String("10.0.0.1"),
+											Ipv6Address:      aws.String("f00:ba5:10:0:0:1"),
+											State: &ec2types.InstanceState{
+												Name: ec2types.InstanceStateNameRunning,
+											},
+											Placement: &ec2types.Placement{
+												AvailabilityZone: aws.String("us-west-2a"),
+											},
+											InstanceType: ec2types.InstanceTypeT3Micro,
 										},
 									},
 								},
@@ -62,14 +71,32 @@ func TestTagLookupIPs(t *testing.T) {
 								{
 									Instances: []ec2types.Instance{
 										{
+											InstanceId:       aws.String("i-01233445"),
 											PrivateIpAddress: aws.String("10.0.0.1"),
+											Ipv6Address:      aws.String("f00:ba5:10:0:0:1"),
+											State: &ec2types.InstanceState{
+												Name: ec2types.InstanceStateNameRunning,
+											},
+											Placement: &ec2types.Placement{
+												AvailabilityZone: aws.String("us-west-2a"),
+											},
+											InstanceType: ec2types.InstanceTypeT3Micro,
 										},
 									},
 								},
 								{
 									Instances: []ec2types.Instance{
 										{
+											InstanceId:       aws.String("i-01233446"),
 											PrivateIpAddress: aws.String("10.0.0.2"),
+											Ipv6Address:      aws.String("f00:ba5:10:0:0:2"),
+											State: &ec2types.InstanceState{
+												Name: ec2types.InstanceStateNameRunning,
+											},
+											Placement: &ec2types.Placement{
+												AvailabilityZone: aws.String("us-west-2a"),
+											},
+											InstanceType: ec2types.InstanceTypeT3Micro,
 										},
 									},
 								},
@@ -98,7 +125,16 @@ func TestTagLookupIPs(t *testing.T) {
 								{
 									Instances: []ec2types.Instance{
 										{
-											Ipv6Address: aws.String("2001:db8:51e5:5a::1"),
+											InstanceId:       aws.String("i-01233445"),
+											PrivateIpAddress: aws.String("10.0.0.1"),
+											Ipv6Address:      aws.String("2001:db8:51e5:5a::1"),
+											State: &ec2types.InstanceState{
+												Name: ec2types.InstanceStateNameRunning,
+											},
+											Placement: &ec2types.Placement{
+												AvailabilityZone: aws.String("us-west-2a"),
+											},
+											InstanceType: ec2types.InstanceTypeT3Micro,
 										},
 									},
 								},

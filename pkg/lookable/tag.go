@@ -18,8 +18,22 @@ func (t Tag) String() string {
 
 // LookupIPs of all the instances named with the given tag.
 func (t Tag) doLookupIPs(api EC2API, ctx context.Context, ipv6 bool) ([]string, error) {
+	instances, err := t.doLookupInstances(api, ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	var output []string
+	for _, instance := range instances {
+		output = append(output, instance.GetIP(ipv6))
+	}
+
+	return output, nil
+}
+
+// doLookupInstances returns detailed information about all instances with the given tag.
+func (t Tag) doLookupInstances(api EC2API, ctx context.Context) ([]*InstanceInfo, error) {
+	var output []*InstanceInfo
 
 	params := &ec2.DescribeInstancesInput{
 		Filters: []types.Filter{
@@ -41,11 +55,8 @@ func (t Tag) doLookupIPs(api EC2API, ctx context.Context, ipv6 bool) ([]string, 
 
 	for _, reservation := range resp.Reservations {
 		for _, instance := range reservation.Instances {
-			if ipv6 {
-				output = append(output, *instance.Ipv6Address)
-			} else {
-				output = append(output, *instance.PrivateIpAddress)
-			}
+			instanceInfo := NewInstanceInfo(instance, nil)
+			output = append(output, instanceInfo)
 		}
 	}
 
@@ -55,4 +66,9 @@ func (t Tag) doLookupIPs(api EC2API, ctx context.Context, ipv6 bool) ([]string, 
 // LookupIPs of all the instances named with the given tag.
 func (t Tag) LookupIPs(ctx context.Context, cfg aws.Config, ipv6 bool) ([]string, error) {
 	return t.doLookupIPs(ec2.NewFromConfig(cfg), ctx, ipv6)
+}
+
+// LookupInstances returns detailed information about all instances with the given tag.
+func (t Tag) LookupInstances(ctx context.Context, cfg aws.Config) ([]*InstanceInfo, error) {
+	return t.doLookupInstances(ec2.NewFromConfig(cfg), ctx)
 }
