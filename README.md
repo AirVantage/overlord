@@ -62,8 +62,8 @@ Each instance in the `.instances` array provides:
 - `InstanceID` - AWS instance ID
 - `PrivateIP` - Private IPv4 address
 - `IPv6Address` - IPv6 address
-- `LifecycleState` - ASG lifecycle state (InService, Terminating, etc. https://docs.aws.amazon.com/autoscaling/ec2/userguide/ec2-auto-scaling-lifecycle.html)
-- `HealthStatus` - Instance health status (Healthy or Unhealthy)
+- `LifecycleState` - ASG lifecycle state (InService, Terminating, etc. https://docs.aws.amazon.com/autoscaling/ec2/userguide/ec2-auto-scaling-lifecycle.html or empty for non-ASG instances)
+- `HealthStatus` - Instance health status (Healthy, Unhealthy or empty for non-ASG instances)
 - `InstanceState` - EC2 instance state (running, stopped, etc. https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_InstanceState.html)
 - `AvailabilityZone` - AWS availability zone
 - `InstanceType` - EC2 instance type
