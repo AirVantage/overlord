@@ -4,11 +4,11 @@ go 1.24
 
 require (
 	github.com/BurntSushi/toml v1.5.0
-	github.com/aws/aws-sdk-go-v2 v1.37.2
+	github.com/aws/aws-sdk-go-v2 v1.39.2
 	github.com/aws/aws-sdk-go-v2/config v1.30.3
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.56.0
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.241.0
-	github.com/aws/smithy-go v1.22.5
+	github.com/aws/smithy-go v1.23.0
 	github.com/samber/slog-multi v1.4.1
 	github.com/samber/slog-syslog/v2 v2.5.2
 )
